@@ -1,5 +1,7 @@
 import '../api/cancellation_token.dart';
 import '../auth/s3_authorization.dart';
+import 'transfer_execution_mode.dart';
+import 'transfer_priority.dart';
 
 /// Request specification for uploading a file to an S3-compatible destination.
 class S3UploadRequest {
@@ -10,6 +12,8 @@ class S3UploadRequest {
     this.contentType = 'application/octet-stream',
     this.customHeaders = const <String, String>{},
     this.cancellationToken,
+    this.priority = TransferPriority.normal,
+    this.executionMode = TransferExecutionMode.foregroundOnly,
   });
 
   /// Convenience constructor for uploading directly via a presigned URL.
@@ -19,6 +23,8 @@ class S3UploadRequest {
     String contentType = 'application/octet-stream',
     Map<String, String> customHeaders = const <String, String>{},
     CancellationToken? cancellationToken,
+    TransferPriority priority = TransferPriority.normal,
+    TransferExecutionMode executionMode = TransferExecutionMode.foregroundOnly,
   }) {
     return S3UploadRequest(
       filePath: filePath,
@@ -26,6 +32,8 @@ class S3UploadRequest {
       contentType: contentType,
       customHeaders: customHeaders,
       cancellationToken: cancellationToken,
+      priority: priority,
+      executionMode: executionMode,
     );
   }
 
@@ -43,4 +51,10 @@ class S3UploadRequest {
 
   /// Optional token to cooperatively request cancellation of this upload.
   final CancellationToken? cancellationToken;
+
+  /// The scheduling priority in the transfer queue. Defaults to [TransferPriority.normal].
+  final TransferPriority priority;
+
+  /// The execution mode (foreground in-process or native background). Defaults to [TransferExecutionMode.foregroundOnly].
+  final TransferExecutionMode executionMode;
 }

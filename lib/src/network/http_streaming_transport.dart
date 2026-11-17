@@ -4,6 +4,8 @@ import 'dart:io';
 
 import '../exceptions/transfer_error_code.dart';
 import '../exceptions/transfer_exception.dart';
+import '../models/download_request.dart';
+import '../models/download_result.dart';
 import '../models/transfer_progress.dart';
 import '../models/transfer_request.dart';
 import '../models/transfer_result.dart';
@@ -12,7 +14,7 @@ import '../utils/file_validator.dart';
 import '../utils/url_sanitizer.dart';
 import 'transfer_transport.dart';
 
-/// Transport implementation that uploads files via bounded chunk streaming over HTTP.
+/// Transport implementation that executes transfers via bounded chunk streaming over HTTP.
 class HttpStreamingTransport implements TransferTransport {
   /// Constructs an [HttpStreamingTransport].
   HttpStreamingTransport({this.httpClient});
@@ -104,7 +106,6 @@ class HttpStreamingTransport implements TransferTransport {
       });
 
       if (statusCode >= 200 && statusCode < 300) {
-        // Drain response body to free socket
         await response.drain<void>();
 
         final rawEtag = responseHeaders['etag'];
@@ -198,6 +199,239 @@ class HttpStreamingTransport implements TransferTransport {
         stackTrace: st,
       );
     } finally {
+      if (httpClient == null) {
+        client.close(force: true);
+      }
+    }
+  }
+
+  @override
+  Future<S3DownloadResult> download(
+    S3DownloadRequest request, {
+    required void Function(TransferProgress) onProgress,
+    required void Function(TransferStatus) onStatusChanged,
+  }) async {
+    final token = request.cancellationToken;
+    if (token != null && token.isCancelled) {
+      onStatusChanged(TransferStatus.cancelled);
+      throw TransferException.cancelled(reason: token.reason);
+    }
+
+    final destinationFile = File(request.destinationPath);
+    if (await destinationFile.exists() && !request.overwrite) {
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.invalidConfiguration,
+        message:
+            'Destination file already exists and overwrite is false: ${request.destinationPath}',
+      );
+    }
+
+    final parentDir = destinationFile.parent;
+    if (!await parentDir.exists()) {
+      try {
+        await parentDir.create(recursive: true);
+      } catch (e, st) {
+        onStatusChanged(TransferStatus.failed);
+        throw TransferException(
+          code: TransferErrorCode.fileAccessDenied,
+          message: 'Unable to create destination directory: ${parentDir.path}',
+          cause: e,
+          stackTrace: st,
+        );
+      }
+    }
+
+    final tempFile = File(
+      '${request.destinationPath}.s3_download_${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+
+    final authorizedRequest = await request.authorization.authorize(
+      method: 'GET',
+      contentType: '',
+      contentLength: 0,
+      customHeaders: request.customHeaders,
+    );
+
+    if (token != null && token.isCancelled) {
+      onStatusChanged(TransferStatus.cancelled);
+      throw TransferException.cancelled(reason: token.reason);
+    }
+
+    onStatusChanged(TransferStatus.inProgress);
+
+    final client = httpClient ?? HttpClient();
+    HttpClientRequest? clientRequest;
+    IOSink? fileSink;
+
+    void cancelCallback() {
+      try {
+        clientRequest?.abort();
+      } catch (_) {}
+    }
+
+    token?.onCancelled(cancelCallback);
+
+    try {
+      clientRequest = await client.openUrl('GET', authorizedRequest.url);
+      for (final entry in authorizedRequest.headers.entries) {
+        clientRequest.headers.set(entry.key, entry.value);
+      }
+
+      final response = await clientRequest.close();
+      final statusCode = response.statusCode;
+
+      final responseHeaders = <String, String>{};
+      response.headers.forEach((name, values) {
+        responseHeaders[name.toLowerCase()] = values.join(', ');
+      });
+
+      if (statusCode >= 200 && statusCode < 300) {
+        final totalBytes = response.contentLength >= 0
+            ? response.contentLength
+            : 0;
+        onProgress(TransferProgress.initial(totalBytes: totalBytes));
+
+        final sink = tempFile.openWrite();
+        fileSink = sink;
+        int bytesTransferred = 0;
+
+        await for (final chunk in response) {
+          if (token != null && token.isCancelled) {
+            clientRequest.abort();
+            await sink.close();
+            fileSink = null;
+            if (await tempFile.exists()) {
+              await tempFile.delete();
+            }
+            onStatusChanged(TransferStatus.cancelled);
+            throw TransferException.cancelled(reason: token.reason);
+          }
+
+          sink.add(chunk);
+          bytesTransferred += chunk.length;
+
+          onProgress(
+            TransferProgress(
+              bytesTransferred: bytesTransferred,
+              totalBytes: totalBytes > 0 ? totalBytes : bytesTransferred,
+            ),
+          );
+        }
+
+        await sink.flush();
+        await sink.close();
+        fileSink = null;
+
+        if (await destinationFile.exists() && request.overwrite) {
+          await destinationFile.delete();
+        }
+        await tempFile.rename(destinationFile.path);
+
+        final rawEtag = responseHeaders['etag'];
+        final eTag = rawEtag?.replaceAll('"', '');
+
+        onStatusChanged(TransferStatus.completed);
+        return S3DownloadResult(
+          destinationPath: destinationFile.path,
+          bytesTransferred: bytesTransferred,
+          eTag: eTag,
+          responseHeaders: responseHeaders,
+        );
+      } else {
+        final errorBody = await utf8.decoder.bind(response).join();
+        final sanitizedUrl = UrlSanitizer.sanitizeUri(authorizedRequest.url);
+
+        TransferErrorCode errorCode;
+        if (statusCode == 404 || errorBody.contains('NoSuchKey')) {
+          errorCode = TransferErrorCode.fileNotFound;
+        } else if (statusCode == 401 ||
+            statusCode == 403 ||
+            errorBody.contains('ExpiredToken') ||
+            errorBody.contains('RequestTimeTooSkewed') ||
+            errorBody.contains('SignatureDoesNotMatch')) {
+          errorCode = TransferErrorCode.authenticationExpired;
+        } else {
+          errorCode = TransferErrorCode.httpFailure;
+        }
+
+        final isRetryable = statusCode >= 500 || statusCode == 429;
+
+        final exception = TransferException(
+          code: errorCode,
+          message:
+              'Download from $sanitizedUrl failed with HTTP $statusCode: $errorBody',
+          httpStatusCode: statusCode,
+          isRetryable: isRetryable,
+        );
+
+        onStatusChanged(TransferStatus.failed);
+        throw exception;
+      }
+    } on SocketException catch (e, st) {
+      if (token != null && token.isCancelled) {
+        onStatusChanged(TransferStatus.cancelled);
+        throw TransferException.cancelled(reason: token.reason, cause: e);
+      }
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.networkUnavailable,
+        message: 'Network socket failure: ${e.message}',
+        cause: e,
+        stackTrace: st,
+        isRetryable: true,
+      );
+    } on TimeoutException catch (e, st) {
+      if (token != null && token.isCancelled) {
+        onStatusChanged(TransferStatus.cancelled);
+        throw TransferException.cancelled(reason: token.reason, cause: e);
+      }
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.networkTimeout,
+        message: 'Network connection or read timed out.',
+        cause: e,
+        stackTrace: st,
+        isRetryable: true,
+      );
+    } on HttpException catch (e, st) {
+      if (token != null && token.isCancelled) {
+        onStatusChanged(TransferStatus.cancelled);
+        throw TransferException.cancelled(reason: token.reason, cause: e);
+      }
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.httpFailure,
+        message: 'HTTP transport error: ${e.message}',
+        cause: e,
+        stackTrace: st,
+        isRetryable: true,
+      );
+    } on TransferException {
+      rethrow;
+    } catch (e, st) {
+      if (token != null && token.isCancelled) {
+        onStatusChanged(TransferStatus.cancelled);
+        throw TransferException.cancelled(reason: token.reason, cause: e);
+      }
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.unexpectedFailure,
+        message: 'Unexpected download failure: $e',
+        cause: e,
+        stackTrace: st,
+      );
+    } finally {
+      if (fileSink != null) {
+        try {
+          await fileSink.close();
+        } catch (_) {}
+      }
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {}
+      }
       if (httpClient == null) {
         client.close(force: true);
       }

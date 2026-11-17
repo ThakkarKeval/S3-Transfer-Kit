@@ -1,3 +1,5 @@
+import '../models/download_request.dart';
+import '../models/download_result.dart';
 import '../models/transfer_progress.dart';
 import '../models/transfer_request.dart';
 import '../models/transfer_result.dart';
@@ -8,6 +10,13 @@ abstract class TransferTransport {
   /// Executes a single-file upload.
   Future<S3UploadResult> upload(
     S3UploadRequest request, {
+    required void Function(TransferProgress) onProgress,
+    required void Function(TransferStatus) onStatusChanged,
+  });
+
+  /// Executes a single-file download.
+  Future<S3DownloadResult> download(
+    S3DownloadRequest request, {
     required void Function(TransferProgress) onProgress,
     required void Function(TransferStatus) onStatusChanged,
   });

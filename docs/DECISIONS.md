@@ -33,3 +33,25 @@
 - **Context:** Applications may authenticate either via backend-generated presigned URLs or directly via AWS Cognito Identity Pools (temporary STS credentials requiring SigV4 signing). Hardcoding upload requests to only presigned URL strings would prevent Cognito support or force duplicate APIs.
 - **Decision:** Abstract authorization behind `S3Authorization`, yielding an `AuthorizedHttpRequest` containing the target URL and signed headers. Presigned URLs are handled via `S3Authorization.presignedUrl` and `S3Authorization.presignedProvider`; Cognito / STS SigV4 signing plugs in as `S3Authorization.cognito` without modifying the transfer transport.
 - **Consequences:** Unified transfer pipeline and identical developer experience across presigned and Cognito authentication flows.
+
+---
+
+## ADR-005: Two-Phase Commit for File Downloads
+
+- **Status:** Accepted
+- **Context:** Writing download chunks directly to the target destination path risks leaving partial, corrupted files if an error occurs, the user cancels the transfer, or the process terminates prematurely.
+- **Decision:** Downloads stream into a temporary staging file (`<destinationPath>.s3_download_<timestamp>.tmp`). Only upon successful HTTP 2xx completion and file closure is the temporary file atomically renamed to the final destination path. In-flight cancellation or errors immediately purge the staging file.
+- **Consequences:** Guaranteed file integrity at destination paths. Zero partially-downloaded files left in user directories.
+
+---
+
+## ADR-006: Transfer Concurrency, Priority Scheduling, and Opt-in Background Execution Mode
+
+- **Status:** Accepted
+- **Context:** Applications need concurrency limits to prevent network socket starvation and CPU thrashing when triggering numerous transfers. Certain transfers require prioritization (e.g. user-visible profile photo vs background document sync). Furthermore, developers need explicit control over whether transfers run in the foreground only or can continue in the background.
+- **Decision:** Implement a `TransferQueue` coordinated by `TransferManager` supporting:
+  1. Configurable `maxConcurrentTransfers` (default: 4).
+  2. Priority scheduling via `TransferPriority` (`high`, `normal`, `low`) with stable FIFO ordering within identical priority levels.
+  3. Explicit `TransferExecutionMode`: transfers run `foregroundOnly` by default; developers must explicitly opt into `allowBackground` per request or per queue configuration.
+  4. Task-level and queue-level pause/resume and cancellation controls with observable state snapshots.
+- **Consequences:** Predictable resource utilization, transparent queue inspection, and fine-grained execution control across all supported platforms.
