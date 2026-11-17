@@ -9,6 +9,9 @@ class MockS3TransferKitPlatform
     implements S3TransferKitPlatform {
   @override
   Future<String?> getPlatformVersion() => Future.value('42');
+
+  @override
+  Future<bool> isBackgroundTransferSupported() => Future.value(true);
 }
 
 void main() {

@@ -13,7 +13,16 @@ import io.flutter.plugin.common.StandardMethodCodec
 import io.flutter.plugin.common.StandardMessageCodec
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 private object MessagesPigeonUtils {
+
+  fun createConnectionError(channelName: String): FlutterError {
+    return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
@@ -34,6 +43,150 @@ private object MessagesPigeonUtils {
       )
     }
   }
+  fun doubleEquals(a: Double, b: Double): Boolean {
+    // Normalize -0.0 to 0.0 and handle NaN equality.
+    return (if (a == 0.0) 0.0 else a) == (if (b == 0.0) 0.0 else b) || (a.isNaN() && b.isNaN())
+  }
+
+  fun floatEquals(a: Float, b: Float): Boolean {
+    // Normalize -0.0 to 0.0 and handle NaN equality.
+    return (if (a == 0.0f) 0.0f else a) == (if (b == 0.0f) 0.0f else b) || (a.isNaN() && b.isNaN())
+  }
+
+  fun doubleHash(d: Double): Int {
+    // Normalize -0.0 to 0.0 and handle NaN to ensure consistent hash codes.
+    val normalized = if (d == 0.0) 0.0 else d
+    val bits = java.lang.Double.doubleToLongBits(normalized)
+    return (bits xor (bits ushr 32)).toInt()
+  }
+
+  fun floatHash(f: Float): Int {
+    // Normalize -0.0 to 0.0 and handle NaN to ensure consistent hash codes.
+    val normalized = if (f == 0.0f) 0.0f else f
+    return java.lang.Float.floatToIntBits(normalized)
+  }
+
+  fun deepEquals(a: Any?, b: Any?): Boolean {
+    if (a === b) {
+      return true
+    }
+    if (a == null || b == null) {
+      return false
+    }
+    if (a is ByteArray && b is ByteArray) {
+      return a.contentEquals(b)
+    }
+    if (a is IntArray && b is IntArray) {
+      return a.contentEquals(b)
+    }
+    if (a is LongArray && b is LongArray) {
+      return a.contentEquals(b)
+    }
+    if (a is DoubleArray && b is DoubleArray) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!doubleEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is FloatArray && b is FloatArray) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!floatEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is Array<*> && b is Array<*>) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!deepEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is List<*> && b is List<*>) {
+      if (a.size != b.size) return false
+      val iterA = a.iterator()
+      val iterB = b.iterator()
+      while (iterA.hasNext() && iterB.hasNext()) {
+        if (!deepEquals(iterA.next(), iterB.next())) return false
+      }
+      return true
+    }
+    if (a is Map<*, *> && b is Map<*, *>) {
+      if (a.size != b.size) return false
+      for (entry in a) {
+        val key = entry.key
+        var found = false
+        for (bEntry in b) {
+          if (deepEquals(key, bEntry.key)) {
+            if (deepEquals(entry.value, bEntry.value)) {
+              found = true
+              break
+            } else {
+              return false
+            }
+          }
+        }
+        if (!found) return false
+      }
+      return true
+    }
+    if (a is Double && b is Double) {
+      return doubleEquals(a, b)
+    }
+    if (a is Float && b is Float) {
+      return floatEquals(a, b)
+    }
+    return a == b
+  }
+
+  fun deepHash(value: Any?): Int {
+    return when (value) {
+      null -> 0
+      is ByteArray -> value.contentHashCode()
+      is IntArray -> value.contentHashCode()
+      is LongArray -> value.contentHashCode()
+      is DoubleArray -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + doubleHash(item)
+        }
+        result
+      }
+      is FloatArray -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + floatHash(item)
+        }
+        result
+      }
+      is Array<*> -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + deepHash(item)
+        }
+        result
+      }
+      is List<*> -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + deepHash(item)
+        }
+        result
+      }
+      is Map<*, *> -> {
+        var result = 0
+        for (entry in value) {
+          result += ((deepHash(entry.key) * 31) xor deepHash(entry.value))
+        }
+        result
+      }
+      is Double -> doubleHash(value)
+      is Float -> floatHash(value)
+      else -> value.hashCode()
+    }
+  }
+
 }
 
 /**
@@ -47,18 +200,264 @@ class FlutterError (
   override val message: String? = null,
   val details: Any? = null
 ) : RuntimeException()
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeUploadRequest (
+  val taskId: String,
+  val url: String,
+  val filePath: String,
+  val method: String,
+  val headers: Map<String, String>
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeUploadRequest {
+      val taskId = pigeonVar_list[0] as String
+      val url = pigeonVar_list[1] as String
+      val filePath = pigeonVar_list[2] as String
+      val method = pigeonVar_list[3] as String
+      val headers = pigeonVar_list[4] as Map<String, String>
+      return NativeUploadRequest(taskId, url, filePath, method, headers)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      taskId,
+      url,
+      filePath,
+      method,
+      headers,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeUploadRequest
+    return MessagesPigeonUtils.deepEquals(this.taskId, other.taskId) && MessagesPigeonUtils.deepEquals(this.url, other.url) && MessagesPigeonUtils.deepEquals(this.filePath, other.filePath) && MessagesPigeonUtils.deepEquals(this.method, other.method) && MessagesPigeonUtils.deepEquals(this.headers, other.headers)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.taskId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.url)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.filePath)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.method)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.headers)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeUploadRequest(taskId=$taskId, url=$url, filePath=$filePath, method=$method, headers=$headers)"
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeDownloadRequest (
+  val taskId: String,
+  val url: String,
+  val destinationPath: String,
+  val headers: Map<String, String>
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeDownloadRequest {
+      val taskId = pigeonVar_list[0] as String
+      val url = pigeonVar_list[1] as String
+      val destinationPath = pigeonVar_list[2] as String
+      val headers = pigeonVar_list[3] as Map<String, String>
+      return NativeDownloadRequest(taskId, url, destinationPath, headers)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      taskId,
+      url,
+      destinationPath,
+      headers,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeDownloadRequest
+    return MessagesPigeonUtils.deepEquals(this.taskId, other.taskId) && MessagesPigeonUtils.deepEquals(this.url, other.url) && MessagesPigeonUtils.deepEquals(this.destinationPath, other.destinationPath) && MessagesPigeonUtils.deepEquals(this.headers, other.headers)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.taskId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.url)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.destinationPath)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.headers)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeDownloadRequest(taskId=$taskId, url=$url, destinationPath=$destinationPath, headers=$headers)"
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeTransferProgressUpdate (
+  val taskId: String,
+  val bytesTransferred: Long,
+  val totalBytes: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeTransferProgressUpdate {
+      val taskId = pigeonVar_list[0] as String
+      val bytesTransferred = pigeonVar_list[1] as Long
+      val totalBytes = pigeonVar_list[2] as Long
+      return NativeTransferProgressUpdate(taskId, bytesTransferred, totalBytes)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      taskId,
+      bytesTransferred,
+      totalBytes,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeTransferProgressUpdate
+    return MessagesPigeonUtils.deepEquals(this.taskId, other.taskId) && MessagesPigeonUtils.deepEquals(this.bytesTransferred, other.bytesTransferred) && MessagesPigeonUtils.deepEquals(this.totalBytes, other.totalBytes)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.taskId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.bytesTransferred)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.totalBytes)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeTransferProgressUpdate(taskId=$taskId, bytesTransferred=$bytesTransferred, totalBytes=$totalBytes)"
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeTransferStateUpdate (
+  val taskId: String,
+  val status: String,
+  val error: String? = null,
+  val httpStatusCode: Long? = null,
+  val eTag: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeTransferStateUpdate {
+      val taskId = pigeonVar_list[0] as String
+      val status = pigeonVar_list[1] as String
+      val error = pigeonVar_list[2] as String?
+      val httpStatusCode = pigeonVar_list[3] as Long?
+      val eTag = pigeonVar_list[4] as String?
+      return NativeTransferStateUpdate(taskId, status, error, httpStatusCode, eTag)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      taskId,
+      status,
+      error,
+      httpStatusCode,
+      eTag,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeTransferStateUpdate
+    return MessagesPigeonUtils.deepEquals(this.taskId, other.taskId) && MessagesPigeonUtils.deepEquals(this.status, other.status) && MessagesPigeonUtils.deepEquals(this.error, other.error) && MessagesPigeonUtils.deepEquals(this.httpStatusCode, other.httpStatusCode) && MessagesPigeonUtils.deepEquals(this.eTag, other.eTag)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.taskId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.status)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.error)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.httpStatusCode)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.eTag)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeTransferStateUpdate(taskId=$taskId, status=$status, error=$error, httpStatusCode=$httpStatusCode, eTag=$eTag)"
+  }
+}
 private open class MessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
-    return     super.readValueOfType(type, buffer)
+    return when (type) {
+      129.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeUploadRequest.fromList(it)
+        }
+      }
+      130.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeDownloadRequest.fromList(it)
+        }
+      }
+      131.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeTransferProgressUpdate.fromList(it)
+        }
+      }
+      132.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeTransferStateUpdate.fromList(it)
+        }
+      }
+      else -> super.readValueOfType(type, buffer)
+    }
   }
   override fun writeValue(stream: ByteArrayOutputStream, value: Any?)   {
-    super.writeValue(stream, value)
+    when (value) {
+      is NativeUploadRequest -> {
+        stream.write(129)
+        writeValue(stream, value.toList())
+      }
+      is NativeDownloadRequest -> {
+        stream.write(130)
+        writeValue(stream, value.toList())
+      }
+      is NativeTransferProgressUpdate -> {
+        stream.write(131)
+        writeValue(stream, value.toList())
+      }
+      is NativeTransferStateUpdate -> {
+        stream.write(132)
+        writeValue(stream, value.toList())
+      }
+      else -> super.writeValue(stream, value)
+    }
   }
 }
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface S3TransferKitHostApi {
   fun getPlatformVersion(): String?
+  fun isBackgroundTransferSupported(): Boolean
+  fun startBackgroundUpload(request: NativeUploadRequest)
+  fun startBackgroundDownload(request: NativeDownloadRequest)
+  fun cancelBackgroundTransfer(taskId: String)
+  fun pauseBackgroundTransfer(taskId: String)
+  fun resumeBackgroundTransfer(taskId: String)
 
   companion object {
     /** The codec used by S3TransferKitHostApi. */
@@ -83,6 +482,158 @@ interface S3TransferKitHostApi {
         } else {
           channel.setMessageHandler(null)
         }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.isBackgroundTransferSupported$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.isBackgroundTransferSupported())
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundUpload$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val requestArg = args[0] as NativeUploadRequest
+            val wrapped: List<Any?> = try {
+              api.startBackgroundUpload(requestArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundDownload$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val requestArg = args[0] as NativeDownloadRequest
+            val wrapped: List<Any?> = try {
+              api.startBackgroundDownload(requestArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.cancelBackgroundTransfer$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val taskIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.cancelBackgroundTransfer(taskIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.pauseBackgroundTransfer$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val taskIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.pauseBackgroundTransfer(taskIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.resumeBackgroundTransfer$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val taskIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.resumeBackgroundTransfer(taskIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated class from Pigeon that represents Flutter messages that can be called from Kotlin. */
+class S3TransferKitFlutterApi(private val binaryMessenger: BinaryMessenger, private val messageChannelSuffix: String = "") {
+  companion object {
+    /** The codec used by S3TransferKitFlutterApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      MessagesPigeonCodec()
+    }
+  }
+  suspend fun onTransferProgress(updateArg: NativeTransferProgressUpdate)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferProgress$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(updateArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(MessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+  suspend fun onTransferStateChanged(updateArg: NativeTransferStateUpdate)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferStateChanged$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(updateArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(MessagesPigeonUtils.createConnectionError(channelName))
+        } 
       }
     }
   }

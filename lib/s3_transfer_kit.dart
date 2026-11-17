@@ -8,6 +8,7 @@ import 'src/models/transfer_request.dart';
 import 'src/multipart/multipart_upload_coordinator.dart';
 import 'src/multipart/multipart_upload_request.dart';
 import 'src/multipart/s3_multipart_provider.dart';
+import 'src/network/native_background_transport.dart';
 import 'src/network/transfer_transport.dart';
 import 'src/persistence/persistent_transfer_record.dart';
 import 'src/persistence/transfer_store.dart';
@@ -34,6 +35,7 @@ export 'src/multipart/multipart_upload_request.dart';
 export 'src/multipart/s3_multipart_provider.dart';
 export 'src/multipart/s3_part.dart';
 export 'src/multipart/s3_part_etag.dart';
+export 'src/network/native_background_transport.dart';
 export 'src/network/transfer_transport.dart';
 export 'src/persistence/file_transfer_store.dart';
 export 'src/persistence/in_memory_transfer_store.dart';
@@ -52,14 +54,17 @@ export 'src/retry/retrying_transport.dart';
 class S3TransferKit {
   /// Constructs an [S3TransferKit] instance.
   ///
-  /// Optionally accepts a custom [transport], [configuration], [multipartCoordinator], or [transferStore] for testing or platform-specific execution.
+  /// Optionally accepts a custom [transport], [backgroundTransport], [configuration], [multipartCoordinator], or [transferStore] for testing or platform-specific execution.
   S3TransferKit({
     TransferTransport? transport,
+    TransferTransport? backgroundTransport,
     TransferQueueConfiguration? configuration,
     MultipartUploadCoordinator? multipartCoordinator,
     TransferStore? transferStore,
   }) : _manager = TransferManager(
          transport: transport,
+         backgroundTransport:
+             backgroundTransport ?? NativeBackgroundTransport(),
          configuration: configuration,
          multipartCoordinator: multipartCoordinator,
          transferStore: transferStore,
@@ -73,6 +78,9 @@ class S3TransferKit {
   /// Underlying transfer queue.
   TransferQueue get queue => _manager.queue;
 
+  /// Optional native background transport.
+  TransferTransport? get backgroundTransport => _manager.backgroundTransport;
+
   /// Optional transfer persistence store.
   TransferStore? get transferStore => _manager.transferStore;
 
@@ -85,6 +93,10 @@ class S3TransferKit {
   /// Returns the platform version reported by the registered native implementation.
   Future<String?> getPlatformVersion() =>
       S3TransferKitPlatform.instance.getPlatformVersion();
+
+  /// Checks whether native background transfers are supported by the active platform.
+  Future<bool> isBackgroundTransferSupported() =>
+      S3TransferKitPlatform.instance.isBackgroundTransferSupported();
 
   /// Enqueues and initiates a single-file upload to an S3-compatible destination.
   ///

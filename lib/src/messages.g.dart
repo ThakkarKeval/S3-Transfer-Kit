@@ -34,6 +34,326 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
+  if (empty) {
+    return <Object?>[];
+  }
+  if (error == null) {
+    return <Object?>[result];
+  }
+  return <Object?>[error.code, error.message, error.details];
+}
+
+bool _deepEquals(Object? a, Object? b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a is double && b is double) {
+    if (a.isNaN && b.isNaN) {
+      return true;
+    }
+    return a == b;
+  }
+  if (a is List && b is List) {
+    return a.length == b.length &&
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
+  }
+  if (a is Map && b is Map) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final MapEntry<Object?, Object?> entryA in a.entries) {
+      bool found = false;
+      for (final MapEntry<Object?, Object?> entryB in b.entries) {
+        if (_deepEquals(entryA.key, entryB.key)) {
+          if (_deepEquals(entryA.value, entryB.value)) {
+            found = true;
+            break;
+          } else {
+            return false;
+          }
+        }
+      }
+      if (!found) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return a == b;
+}
+
+int _deepHash(Object? value) {
+  if (value is List) {
+    return Object.hashAll(value.map(_deepHash));
+  }
+  if (value is Map) {
+    int result = 0;
+    for (final MapEntry<Object?, Object?> entry in value.entries) {
+      result += (_deepHash(entry.key) * 31) ^ _deepHash(entry.value);
+    }
+    return result;
+  }
+  if (value is double && value.isNaN) {
+    // Normalize NaN to a consistent hash.
+    return 0x7FF8000000000000.hashCode;
+  }
+  if (value is double && value == 0.0) {
+    // Normalize -0.0 to 0.0 so they have the same hash code.
+    return 0.0.hashCode;
+  }
+  return value.hashCode;
+}
+
+class NativeUploadRequest {
+  NativeUploadRequest({
+    required this.taskId,
+    required this.url,
+    required this.filePath,
+    required this.method,
+    required this.headers,
+  });
+
+  String taskId;
+
+  String url;
+
+  String filePath;
+
+  String method;
+
+  Map<String, String> headers;
+
+  List<Object?> _toList() {
+    return <Object?>[taskId, url, filePath, method, headers];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeUploadRequest decode(Object result) {
+    result as List<Object?>;
+    return NativeUploadRequest(
+      taskId: result[0]! as String,
+      url: result[1]! as String,
+      filePath: result[2]! as String,
+      method: result[3]! as String,
+      headers: (result[4]! as Map<Object?, Object?>).cast<String, String>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeUploadRequest || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(taskId, other.taskId) &&
+        _deepEquals(url, other.url) &&
+        _deepEquals(filePath, other.filePath) &&
+        _deepEquals(method, other.method) &&
+        _deepEquals(headers, other.headers);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeUploadRequest(taskId: $taskId, url: $url, filePath: $filePath, method: $method, headers: $headers)';
+  }
+}
+
+class NativeDownloadRequest {
+  NativeDownloadRequest({
+    required this.taskId,
+    required this.url,
+    required this.destinationPath,
+    required this.headers,
+  });
+
+  String taskId;
+
+  String url;
+
+  String destinationPath;
+
+  Map<String, String> headers;
+
+  List<Object?> _toList() {
+    return <Object?>[taskId, url, destinationPath, headers];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeDownloadRequest decode(Object result) {
+    result as List<Object?>;
+    return NativeDownloadRequest(
+      taskId: result[0]! as String,
+      url: result[1]! as String,
+      destinationPath: result[2]! as String,
+      headers: (result[3]! as Map<Object?, Object?>).cast<String, String>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeDownloadRequest || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(taskId, other.taskId) &&
+        _deepEquals(url, other.url) &&
+        _deepEquals(destinationPath, other.destinationPath) &&
+        _deepEquals(headers, other.headers);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeDownloadRequest(taskId: $taskId, url: $url, destinationPath: $destinationPath, headers: $headers)';
+  }
+}
+
+class NativeTransferProgressUpdate {
+  NativeTransferProgressUpdate({
+    required this.taskId,
+    required this.bytesTransferred,
+    required this.totalBytes,
+  });
+
+  String taskId;
+
+  int bytesTransferred;
+
+  int totalBytes;
+
+  List<Object?> _toList() {
+    return <Object?>[taskId, bytesTransferred, totalBytes];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeTransferProgressUpdate decode(Object result) {
+    result as List<Object?>;
+    return NativeTransferProgressUpdate(
+      taskId: result[0]! as String,
+      bytesTransferred: result[1]! as int,
+      totalBytes: result[2]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeTransferProgressUpdate ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(taskId, other.taskId) &&
+        _deepEquals(bytesTransferred, other.bytesTransferred) &&
+        _deepEquals(totalBytes, other.totalBytes);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeTransferProgressUpdate(taskId: $taskId, bytesTransferred: $bytesTransferred, totalBytes: $totalBytes)';
+  }
+}
+
+class NativeTransferStateUpdate {
+  NativeTransferStateUpdate({
+    required this.taskId,
+    required this.status,
+    this.error,
+    this.httpStatusCode,
+    this.eTag,
+  });
+
+  String taskId;
+
+  String status;
+
+  String? error;
+
+  int? httpStatusCode;
+
+  String? eTag;
+
+  List<Object?> _toList() {
+    return <Object?>[taskId, status, error, httpStatusCode, eTag];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeTransferStateUpdate decode(Object result) {
+    result as List<Object?>;
+    return NativeTransferStateUpdate(
+      taskId: result[0]! as String,
+      status: result[1]! as String,
+      error: result[2] as String?,
+      httpStatusCode: result[3] as int?,
+      eTag: result[4] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeTransferStateUpdate ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(taskId, other.taskId) &&
+        _deepEquals(status, other.status) &&
+        _deepEquals(error, other.error) &&
+        _deepEquals(httpStatusCode, other.httpStatusCode) &&
+        _deepEquals(eTag, other.eTag);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeTransferStateUpdate(taskId: $taskId, status: $status, error: $error, httpStatusCode: $httpStatusCode, eTag: $eTag)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -41,6 +361,18 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
+    } else if (value is NativeUploadRequest) {
+      buffer.putUint8(129);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeDownloadRequest) {
+      buffer.putUint8(130);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeTransferProgressUpdate) {
+      buffer.putUint8(131);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeTransferStateUpdate) {
+      buffer.putUint8(132);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -49,6 +381,14 @@ class _PigeonCodec extends StandardMessageCodec {
   @override
   Object? readValueOfType(int type, ReadBuffer buffer) {
     switch (type) {
+      case 129:
+        return NativeUploadRequest.decode(readValue(buffer)!);
+      case 130:
+        return NativeDownloadRequest.decode(readValue(buffer)!);
+      case 131:
+        return NativeTransferProgressUpdate.decode(readValue(buffer)!);
+      case 132:
+        return NativeTransferStateUpdate.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -88,5 +428,188 @@ class S3TransferKitHostApi {
       isNullValid: true,
     );
     return pigeonVar_replyValue as String?;
+  }
+
+  Future<bool> isBackgroundTransferSupported() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.isBackgroundTransferSupported$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
+  }
+
+  Future<void> startBackgroundUpload(NativeUploadRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundUpload$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> startBackgroundDownload(NativeDownloadRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundDownload$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> cancelBackgroundTransfer(String taskId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.cancelBackgroundTransfer$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[taskId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> pauseBackgroundTransfer(String taskId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.pauseBackgroundTransfer$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[taskId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> resumeBackgroundTransfer(String taskId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.resumeBackgroundTransfer$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[taskId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+}
+
+abstract class S3TransferKitFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onTransferProgress(NativeTransferProgressUpdate update);
+
+  void onTransferStateChanged(NativeTransferStateUpdate update);
+
+  static void setUp(
+    S3TransferKitFlutterApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferProgress$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final NativeTransferProgressUpdate arg_update =
+              args[0]! as NativeTransferProgressUpdate;
+          try {
+            api.onTransferProgress(arg_update);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferStateChanged$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final NativeTransferStateUpdate arg_update =
+              args[0]! as NativeTransferStateUpdate;
+          try {
+            api.onTransferStateChanged(arg_update);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
   }
 }

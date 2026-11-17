@@ -15,4 +15,9 @@ class MethodChannelS3TransferKit extends S3TransferKitPlatform {
   Future<String?> getPlatformVersion() {
     return _hostApi.getPlatformVersion();
   }
+
+  @override
+  Future<bool> isBackgroundTransferSupported() {
+    return _hostApi.isBackgroundTransferSupported();
+  }
 }

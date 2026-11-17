@@ -7,6 +7,7 @@ import '../exceptions/transfer_error_code.dart';
 import '../exceptions/transfer_exception.dart';
 import '../models/download_request.dart';
 import '../models/download_result.dart';
+import '../models/transfer_execution_mode.dart';
 import '../models/transfer_request.dart';
 import '../models/transfer_result.dart';
 import '../models/transfer_status.dart';
@@ -30,6 +31,7 @@ class TransferManager {
   TransferManager({
     TransferQueueConfiguration? configuration,
     TransferTransport? transport,
+    this.backgroundTransport,
     MultipartUploadCoordinator? multipartCoordinator,
     TransferStore? transferStore,
   }) : _configuration = configuration ?? const TransferQueueConfiguration(),
@@ -49,6 +51,10 @@ class TransferManager {
 
   final TransferQueueConfiguration _configuration;
   final TransferTransport _transport;
+
+  /// Optional native background transport.
+  final TransferTransport? backgroundTransport;
+
   final MultipartUploadCoordinator _multipartCoordinator;
   final TransferStore? _transferStore;
   final TransferQueue _queue;
@@ -122,8 +128,16 @@ class TransferManager {
           );
         }
 
+        final bg = backgroundTransport;
+        final effectiveTransport =
+            (effectiveRequest.executionMode ==
+                    TransferExecutionMode.allowBackground &&
+                bg != null)
+            ? bg
+            : _transport;
+
         try {
-          final result = await _transport.upload(
+          final result = await effectiveTransport.upload(
             effectiveRequest,
             onProgress: onProgress,
             onStatusChanged: (status) {
@@ -247,8 +261,16 @@ class TransferManager {
           );
         }
 
+        final bg = backgroundTransport;
+        final effectiveTransport =
+            (effectiveRequest.executionMode ==
+                    TransferExecutionMode.allowBackground &&
+                bg != null)
+            ? bg
+            : _transport;
+
         try {
-          final result = await _transport.download(
+          final result = await effectiveTransport.download(
             effectiveRequest,
             onProgress: onProgress,
             onStatusChanged: (status) {

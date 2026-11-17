@@ -1,8 +1,8 @@
 # Project Progress — s3_transfer_kit
 
 ## Current Status
-- **Current Phase:** Phase 6 (Persistent Transfer Recovery) — Completed
-- **Next Phase:** Phase 7 (Native Background Transfers) — Awaiting Approval
+- **Current Phase:** Phase 7 (Native Background Transfers) — Completed
+- **Next Phase:** Phase 8 (Credential Renewal & S3 Providers) — Awaiting Approval
 
 ---
 
@@ -17,10 +17,22 @@
 | **Phase 4** | Retry & Network Recovery | Completed | 2026-11-17 |
 | **Phase 5** | Multipart Upload Support | Completed | 2026-11-17 |
 | **Phase 6** | Persistent Transfer Recovery | Completed | 2026-11-17 |
-| **Phase 7** | Native Background Transfers | Planned | - |
+| **Phase 7** | Native Background Transfers | Completed | 2026-11-17 |
 | **Phase 8** | Credential Renewal & S3 Providers | Planned | - |
 | **Phase 9** | Performance & Reliability Validation | Planned | - |
 | **Phase 10** | Release Readiness | Planned | - |
+
+---
+
+## Phase 7 Verification
+- [x] Strictly opt-in background execution: transfers default to `TransferExecutionMode.foregroundOnly` (fast in-process Dart HTTP streaming) and only route to native background services when explicitly requested via `TransferExecutionMode.allowBackground`.
+- [x] Type-safe Pigeon platform protocol: bidirectional messaging between Flutter and native platforms using `S3TransferKitHostApi` and `S3TransferKitFlutterApi` with `NativeUploadRequest`, `NativeDownloadRequest`, `NativeTransferProgressUpdate`, and `NativeTransferStateUpdate`.
+- [x] Android native background engine: thread-pooled `HttpURLConnection` execution with live byte progress updates and main-thread Pigeon dispatching.
+- [x] iOS and macOS native background engine: `URLSession` delegate architecture with `didSendBodyData` progress reporting and async Swift Pigeon callbacks.
+- [x] Seamless fallback: `NativeBackgroundTransport` detects platform support via `isBackgroundTransferSupported()` and automatically falls back to in-process foreground transport on unsupported platforms.
+- [x] Cooperative native cancellation: in-flight cancellation via `CancellationToken` signals `cancelBackgroundTransfer` to the native platform, aborting native connections immediately.
+- [x] Comprehensive test suite with 7 dedicated background transfer and routing tests (71 total plugin tests).
+- [x] Static analysis and formatting pass with 0 issues.
 
 ---
 

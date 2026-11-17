@@ -15,4 +15,7 @@ class S3TransferKitWeb extends S3TransferKitPlatform {
   /// Returns a [String] containing the version of the platform.
   @override
   Future<String?> getPlatformVersion() async => web.window.navigator.userAgent;
+
+  @override
+  Future<bool> isBackgroundTransferSupported() async => false;
 }

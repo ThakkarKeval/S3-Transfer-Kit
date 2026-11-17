@@ -55,6 +55,10 @@ private func wrapError(_ error: Any) -> [Any?] {
   ]
 }
 
+private func createConnectionError(withChannelName channelName: String) -> PigeonError {
+  return PigeonError(code: "channel-error", message: "Unable to establish connection on channel: '\(channelName)'.", details: "")
+}
+
 enum MessagesPigeonInternal {
   static func isNullish(_ value: Any?) -> Bool {
     guard let innerValue = value else {
@@ -67,6 +71,115 @@ enum MessagesPigeonInternal {
 
     return innerValue is NSNull
   }
+  static func doubleEquals(_ lhs: Double, _ rhs: Double) -> Bool {
+    return (lhs.isNaN && rhs.isNaN) || lhs == rhs
+  }
+
+  static func doubleHash(_ value: Double, _ hasher: inout Hasher) {
+    if value.isNaN {
+      hasher.combine(0x7FF8000000000000)
+    } else {
+      // Normalize -0.0 to 0.0
+      hasher.combine(value == 0 ? 0 : value)
+    }
+  }
+
+  static func deepEquals(_ lhs: Any?, _ rhs: Any?) -> Bool {
+    let cleanLhs = nilOrValue(lhs) as Any?
+    let cleanRhs = nilOrValue(rhs) as Any?
+    switch (cleanLhs, cleanRhs) {
+    case (nil, nil):
+      return true
+
+    case (nil, _), (_, nil):
+      return false
+
+    case (let lhs as AnyObject, let rhs as AnyObject) where lhs === rhs:
+      return true
+
+    case is (Void, Void):
+      return true
+
+    case (let lhsArray, let rhsArray) as ([Double], [Double]):
+      guard lhsArray.count == rhsArray.count else { return false }
+      for (index, element) in lhsArray.enumerated() {
+        if !doubleEquals(element, rhsArray[index]) {
+          return false
+        }
+      }
+      return true
+
+    case (let lhsArray, let rhsArray) as ([Any?], [Any?]):
+      guard lhsArray.count == rhsArray.count else { return false }
+      for (index, element) in lhsArray.enumerated() {
+        if !deepEquals(element, rhsArray[index]) {
+          return false
+        }
+      }
+      return true
+
+    case (let lhsDictionary, let rhsDictionary) as ([AnyHashable: Any?], [AnyHashable: Any?]):
+      guard lhsDictionary.count == rhsDictionary.count else { return false }
+      for (lhsKey, lhsValue) in lhsDictionary {
+        var found = false
+        for (rhsKey, rhsValue) in rhsDictionary {
+          if deepEquals(lhsKey, rhsKey) {
+            if deepEquals(lhsValue, rhsValue) {
+              found = true
+              break
+            } else {
+              return false
+            }
+          }
+        }
+        if !found { return false }
+      }
+      return true
+
+    case (let lhs as Double, let rhs as Double):
+      return doubleEquals(lhs, rhs)
+
+    case (let lhsHashable, let rhsHashable) as (AnyHashable, AnyHashable):
+      return lhsHashable == rhsHashable
+
+    default:
+      return false
+    }
+  }
+
+  static func deepHash(value: Any?, hasher: inout Hasher) {
+    let cleanValue = nilOrValue(value) as Any?
+    if let cleanValue = cleanValue {
+      if let doubleValue = cleanValue as? Double {
+        doubleHash(doubleValue, &hasher)
+      } else if let valueList = cleanValue as? [Any?] {
+        for item in valueList {
+          deepHash(value: item, hasher: &hasher)
+        }
+      } else if let valueList = cleanValue as? [Double] {
+        for item in valueList {
+          doubleHash(item, &hasher)
+        }
+      } else if let valueDict = cleanValue as? [AnyHashable: Any?] {
+        var result = 0
+        for (key, value) in valueDict {
+          var entryKeyHasher = Hasher()
+          deepHash(value: key, hasher: &entryKeyHasher)
+          var entryValueHasher = Hasher()
+          deepHash(value: value, hasher: &entryValueHasher)
+          result = result &+ ((entryKeyHasher.finalize() &* 31) ^ entryValueHasher.finalize())
+        }
+        hasher.combine(result)
+      } else if let hashableValue = cleanValue as? AnyHashable {
+        hasher.combine(hashableValue)
+      } else {
+        hasher.combine(String(describing: cleanValue))
+      }
+    } else {
+      hasher.combine(0)
+    }
+  }
+
 }
 
 private func nilOrValue<T>(_ value: Any?) -> T? {
@@ -75,10 +188,246 @@ private func nilOrValue<T>(_ value: Any?) -> T? {
 }
 
 
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeUploadRequest: Hashable, CustomStringConvertible {
+  var taskId: String
+  var url: String
+  var filePath: String
+  var method: String
+  var headers: [String: String]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeUploadRequest? {
+    let taskId = pigeonVar_list[0] as! String
+    let url = pigeonVar_list[1] as! String
+    let filePath = pigeonVar_list[2] as! String
+    let method = pigeonVar_list[3] as! String
+    let headers = pigeonVar_list[4] as! [String: String]
+
+    return NativeUploadRequest(
+      taskId: taskId,
+      url: url,
+      filePath: filePath,
+      method: method,
+      headers: headers
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      taskId,
+      url,
+      filePath,
+      method,
+      headers,
+    ]
+  }
+  static func == (lhs: NativeUploadRequest, rhs: NativeUploadRequest) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.taskId, rhs.taskId) && MessagesPigeonInternal.deepEquals(lhs.url, rhs.url) && MessagesPigeonInternal.deepEquals(lhs.filePath, rhs.filePath) && MessagesPigeonInternal.deepEquals(lhs.method, rhs.method) && MessagesPigeonInternal.deepEquals(lhs.headers, rhs.headers)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeUploadRequest")
+    MessagesPigeonInternal.deepHash(value: taskId, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: url, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: filePath, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: method, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: headers, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeUploadRequest(taskId: \(String(describing: taskId)), url: \(String(describing: url)), filePath: \(String(describing: filePath)), method: \(String(describing: method)), headers: \(String(describing: headers)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeDownloadRequest: Hashable, CustomStringConvertible {
+  var taskId: String
+  var url: String
+  var destinationPath: String
+  var headers: [String: String]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeDownloadRequest? {
+    let taskId = pigeonVar_list[0] as! String
+    let url = pigeonVar_list[1] as! String
+    let destinationPath = pigeonVar_list[2] as! String
+    let headers = pigeonVar_list[3] as! [String: String]
+
+    return NativeDownloadRequest(
+      taskId: taskId,
+      url: url,
+      destinationPath: destinationPath,
+      headers: headers
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      taskId,
+      url,
+      destinationPath,
+      headers,
+    ]
+  }
+  static func == (lhs: NativeDownloadRequest, rhs: NativeDownloadRequest) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.taskId, rhs.taskId) && MessagesPigeonInternal.deepEquals(lhs.url, rhs.url) && MessagesPigeonInternal.deepEquals(lhs.destinationPath, rhs.destinationPath) && MessagesPigeonInternal.deepEquals(lhs.headers, rhs.headers)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeDownloadRequest")
+    MessagesPigeonInternal.deepHash(value: taskId, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: url, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: destinationPath, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: headers, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeDownloadRequest(taskId: \(String(describing: taskId)), url: \(String(describing: url)), destinationPath: \(String(describing: destinationPath)), headers: \(String(describing: headers)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeTransferProgressUpdate: Hashable, CustomStringConvertible {
+  var taskId: String
+  var bytesTransferred: Int64
+  var totalBytes: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeTransferProgressUpdate? {
+    let taskId = pigeonVar_list[0] as! String
+    let bytesTransferred = pigeonVar_list[1] as! Int64
+    let totalBytes = pigeonVar_list[2] as! Int64
+
+    return NativeTransferProgressUpdate(
+      taskId: taskId,
+      bytesTransferred: bytesTransferred,
+      totalBytes: totalBytes
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      taskId,
+      bytesTransferred,
+      totalBytes,
+    ]
+  }
+  static func == (lhs: NativeTransferProgressUpdate, rhs: NativeTransferProgressUpdate) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.taskId, rhs.taskId) && MessagesPigeonInternal.deepEquals(lhs.bytesTransferred, rhs.bytesTransferred) && MessagesPigeonInternal.deepEquals(lhs.totalBytes, rhs.totalBytes)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeTransferProgressUpdate")
+    MessagesPigeonInternal.deepHash(value: taskId, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: bytesTransferred, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: totalBytes, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeTransferProgressUpdate(taskId: \(String(describing: taskId)), bytesTransferred: \(String(describing: bytesTransferred)), totalBytes: \(String(describing: totalBytes)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeTransferStateUpdate: Hashable, CustomStringConvertible {
+  var taskId: String
+  var status: String
+  var error: String? = nil
+  var httpStatusCode: Int64? = nil
+  var eTag: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeTransferStateUpdate? {
+    let taskId = pigeonVar_list[0] as! String
+    let status = pigeonVar_list[1] as! String
+    let error: String? = nilOrValue(pigeonVar_list[2])
+    let httpStatusCode: Int64? = nilOrValue(pigeonVar_list[3])
+    let eTag: String? = nilOrValue(pigeonVar_list[4])
+
+    return NativeTransferStateUpdate(
+      taskId: taskId,
+      status: status,
+      error: error,
+      httpStatusCode: httpStatusCode,
+      eTag: eTag
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      taskId,
+      status,
+      error,
+      httpStatusCode,
+      eTag,
+    ]
+  }
+  static func == (lhs: NativeTransferStateUpdate, rhs: NativeTransferStateUpdate) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.taskId, rhs.taskId) && MessagesPigeonInternal.deepEquals(lhs.status, rhs.status) && MessagesPigeonInternal.deepEquals(lhs.error, rhs.error) && MessagesPigeonInternal.deepEquals(lhs.httpStatusCode, rhs.httpStatusCode) && MessagesPigeonInternal.deepEquals(lhs.eTag, rhs.eTag)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeTransferStateUpdate")
+    MessagesPigeonInternal.deepHash(value: taskId, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: status, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: error, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: httpStatusCode, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: eTag, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeTransferStateUpdate(taskId: \(String(describing: taskId)), status: \(String(describing: status)), error: \(String(describing: error)), httpStatusCode: \(String(describing: httpStatusCode)), eTag: \(String(describing: eTag)))"
+  }
+}
+
 private class MessagesPigeonCodecReader: FlutterStandardReader {
+  override func readValue(ofType type: UInt8) -> Any? {
+    switch type {
+    case 129:
+      return NativeUploadRequest.fromList(self.readValue() as! [Any?])
+    case 130:
+      return NativeDownloadRequest.fromList(self.readValue() as! [Any?])
+    case 131:
+      return NativeTransferProgressUpdate.fromList(self.readValue() as! [Any?])
+    case 132:
+      return NativeTransferStateUpdate.fromList(self.readValue() as! [Any?])
+    default:
+      return super.readValue(ofType: type)
+    }
+  }
 }
 
 private class MessagesPigeonCodecWriter: FlutterStandardWriter {
+  override func writeValue(_ value: Any) {
+    if let value = value as? NativeUploadRequest {
+      super.writeByte(129)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeDownloadRequest {
+      super.writeByte(130)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeTransferProgressUpdate {
+      super.writeByte(131)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeTransferStateUpdate {
+      super.writeByte(132)
+      super.writeValue(value.toList())
+    } else {
+      super.writeValue(value)
+    }
+  }
 }
 
 private class MessagesPigeonCodecReaderWriter: FlutterStandardReaderWriter {
@@ -98,6 +447,12 @@ class MessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol S3TransferKitHostApi {
   func getPlatformVersion() throws -> String?
+  func isBackgroundTransferSupported() throws -> Bool
+  func startBackgroundUpload(request: NativeUploadRequest) throws
+  func startBackgroundDownload(request: NativeDownloadRequest) throws
+  func cancelBackgroundTransfer(taskId: String) throws
+  func pauseBackgroundTransfer(taskId: String) throws
+  func resumeBackgroundTransfer(taskId: String) throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -118,6 +473,151 @@ class S3TransferKitHostApiSetup {
       }
     } else {
       getPlatformVersionChannel.setMessageHandler(nil)
+    }
+    let isBackgroundTransferSupportedChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.isBackgroundTransferSupported\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      isBackgroundTransferSupportedChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.isBackgroundTransferSupported()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      isBackgroundTransferSupportedChannel.setMessageHandler(nil)
+    }
+    let startBackgroundUploadChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundUpload\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startBackgroundUploadChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! NativeUploadRequest
+        do {
+          try api.startBackgroundUpload(request: requestArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      startBackgroundUploadChannel.setMessageHandler(nil)
+    }
+    let startBackgroundDownloadChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.startBackgroundDownload\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startBackgroundDownloadChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! NativeDownloadRequest
+        do {
+          try api.startBackgroundDownload(request: requestArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      startBackgroundDownloadChannel.setMessageHandler(nil)
+    }
+    let cancelBackgroundTransferChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.cancelBackgroundTransfer\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      cancelBackgroundTransferChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let taskIdArg = args[0] as! String
+        do {
+          try api.cancelBackgroundTransfer(taskId: taskIdArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      cancelBackgroundTransferChannel.setMessageHandler(nil)
+    }
+    let pauseBackgroundTransferChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.pauseBackgroundTransfer\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      pauseBackgroundTransferChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let taskIdArg = args[0] as! String
+        do {
+          try api.pauseBackgroundTransfer(taskId: taskIdArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      pauseBackgroundTransferChannel.setMessageHandler(nil)
+    }
+    let resumeBackgroundTransferChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.resumeBackgroundTransfer\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      resumeBackgroundTransferChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let taskIdArg = args[0] as! String
+        do {
+          try api.resumeBackgroundTransfer(taskId: taskIdArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      resumeBackgroundTransferChannel.setMessageHandler(nil)
+    }
+  }
+}
+
+/// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
+protocol S3TransferKitFlutterApiProtocol {
+  @MainActor func onTransferProgress(update updateArg: NativeTransferProgressUpdate) async throws
+  @MainActor func onTransferStateChanged(update updateArg: NativeTransferStateUpdate) async throws
+}
+class S3TransferKitFlutterApi: S3TransferKitFlutterApiProtocol {
+  private let binaryMessenger: FlutterBinaryMessenger
+  private let messageChannelSuffix: String
+  init(binaryMessenger: FlutterBinaryMessenger, messageChannelSuffix: String = "") {
+    self.binaryMessenger = binaryMessenger
+    self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+  }
+  var codec: MessagesPigeonCodec {
+    return MessagesPigeonCodec.shared
+  }
+  @MainActor func onTransferProgress(update updateArg: NativeTransferProgressUpdate) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferProgress\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([updateArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+  @MainActor func onTransferStateChanged(update updateArg: NativeTransferStateUpdate) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.s3_transfer_kit.S3TransferKitFlutterApi.onTransferStateChanged\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([updateArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
     }
   }
 }

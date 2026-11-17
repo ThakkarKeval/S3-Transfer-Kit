@@ -98,3 +98,19 @@
   5. S3 Multipart resumption: Skip already-completed parts recorded in `completedParts`, initialize byte progress to the sum of finished parts, upload only pending slices, and assemble all sorted ETags upon completion.
   6. Orphaned transfer cleanup: Provide `cleanOrphanedTransfers` on `TransferManager` to prune records older than a configurable threshold and invoke `abortMultipartUpload` on S3 to prevent lingering cloud storage charges.
 - **Consequences:** Zero third-party database dependencies, instant recovery across process termination, robust cloud cost protection, and smooth progress tracking on resumed transfers.
+
+---
+
+## ADR-010: Native Background Transfers and Opt-In Execution Architecture
+
+- **Status:** Accepted
+- **Context:** Mobile OS kernels (Android and iOS) throttle or freeze app processes seconds after backgrounding, halting standard in-process Dart HTTP sockets. However, many applications prefer lightweight in-process foreground transfers to avoid OS background execution overhead or native channel complexity unless explicitly needed.
+- **Decision:**
+  1. Opt-in background execution: Background execution is strictly optional via `TransferExecutionMode.allowBackground`. Transfers default to `TransferExecutionMode.foregroundOnly` (in-process Dart streaming).
+  2. Type-safe Pigeon platform channel: Defines `S3TransferKitHostApi` and `S3TransferKitFlutterApi` transmitting structured `NativeUploadRequest`, `NativeDownloadRequest`, `NativeTransferProgressUpdate`, and `NativeTransferStateUpdate`.
+  3. Platform native backends:
+     - Android: Worker thread pool with background `HttpURLConnection` streaming and main-thread Pigeon callbacks.
+     - iOS & macOS: Native `URLSession` / background tasks with `URLSessionTaskDelegate` and async MainActor message dispatching.
+  4. Graceful fallback: If background execution is unsupported on the host platform (e.g. Web or unsupported platforms), `NativeBackgroundTransport` automatically falls back to in-process foreground transport.
+  5. Cooperative cancellation: Cancelling via `CancellationToken` in Dart invokes `cancelBackgroundTransfer` on the host platform, terminating native network connections immediately.
+- **Consequences:** Seamless transfers surviving app backgrounding on supported native platforms while giving developers complete control to keep transfers foreground-only with zero unnecessary overhead.

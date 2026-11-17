@@ -23,7 +23,15 @@ abstract class S3TransferKitPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// Returns the platform operating system version string.
   Future<String?> getPlatformVersion() {
     throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  /// Checks whether native background transfers are supported by the current platform.
+  Future<bool> isBackgroundTransferSupported() {
+    throw UnimplementedError(
+      'isBackgroundTransferSupported() has not been implemented.',
+    );
   }
 }
