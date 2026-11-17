@@ -1,5 +1,6 @@
 import '../api/cancellation_token.dart';
 import '../auth/s3_authorization.dart';
+import '../retry/retry_policy.dart';
 import 'transfer_execution_mode.dart';
 import 'transfer_priority.dart';
 
@@ -14,6 +15,7 @@ class S3DownloadRequest {
     this.cancellationToken,
     this.priority = TransferPriority.normal,
     this.executionMode = TransferExecutionMode.foregroundOnly,
+    this.retryPolicy,
   });
 
   /// Convenience constructor for downloading directly via a presigned GET URL.
@@ -25,6 +27,7 @@ class S3DownloadRequest {
     CancellationToken? cancellationToken,
     TransferPriority priority = TransferPriority.normal,
     TransferExecutionMode executionMode = TransferExecutionMode.foregroundOnly,
+    RetryPolicy? retryPolicy,
   }) {
     return S3DownloadRequest(
       destinationPath: destinationPath,
@@ -34,6 +37,7 @@ class S3DownloadRequest {
       cancellationToken: cancellationToken,
       priority: priority,
       executionMode: executionMode,
+      retryPolicy: retryPolicy,
     );
   }
 
@@ -57,4 +61,9 @@ class S3DownloadRequest {
 
   /// The execution mode (foreground in-process or native background). Defaults to [TransferExecutionMode.foregroundOnly].
   final TransferExecutionMode executionMode;
+
+  /// Optional retry policy governing automatic retries for this download.
+  ///
+  /// Set to [RetryPolicy.none] to fail fast without retrying. Defaults to the queue configuration policy.
+  final RetryPolicy? retryPolicy;
 }

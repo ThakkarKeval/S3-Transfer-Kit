@@ -55,3 +55,17 @@
   3. Explicit `TransferExecutionMode`: transfers run `foregroundOnly` by default; developers must explicitly opt into `allowBackground` per request or per queue configuration.
   4. Task-level and queue-level pause/resume and cancellation controls with observable state snapshots.
 - **Consequences:** Predictable resource utilization, transparent queue inspection, and fine-grained execution control across all supported platforms.
+
+---
+
+## ADR-007: Configurable Retry Policy, Exponential Backoff with Jitter, and Fail-Fast Mode
+
+- **Status:** Accepted
+- **Context:** Transient network and server errors (broken sockets, connection timeouts, HTTP 5xx, HTTP 429) can often be recovered automatically by retrying. However, some user flows (e.g. interactive user uploads) require failing fast without background delays so the app can block or prompt the user to manually re-upload.
+- **Decision:** Introduce `RetryPolicy` and `RetryingTransport` with:
+  1. `RetryPolicy.none`: Fail-fast mode (`allowRetry = false`). Errors immediately fail the task on the first attempt with zero delay.
+  2. `RetryPolicy.standard`: Configurable exponential backoff with full jitter to avoid thundering herd issues.
+  3. `RetryClassifier`: Deterministically isolates retryable errors (HTTP 5xx, 429, socket drop, timeout) from permanent errors (HTTP 4xx, file not found, cancellation, auth expired).
+  4. Cooperative sleep cancellation: Cancelling during backoff timer immediately aborts without waiting for the sleep duration to elapse.
+  5. Configurable both globally on `TransferQueueConfiguration` and per request on `S3UploadRequest` / `S3DownloadRequest`.
+- **Consequences:** Complete developer control over retry vs fail-fast behavior with zero code duplication and predictable error recovery.

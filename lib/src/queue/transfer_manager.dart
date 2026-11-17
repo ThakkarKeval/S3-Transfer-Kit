@@ -8,6 +8,7 @@ import '../models/transfer_request.dart';
 import '../models/transfer_result.dart';
 import '../network/http_streaming_transport.dart';
 import '../network/transfer_transport.dart';
+import '../retry/retrying_transport.dart';
 import 'transfer_queue.dart';
 import 'transfer_queue_configuration.dart';
 import 'transfer_queue_snapshot.dart';
@@ -18,9 +19,18 @@ class TransferManager {
   TransferManager({
     TransferQueueConfiguration? configuration,
     TransferTransport? transport,
-  }) : _transport = transport ?? HttpStreamingTransport(),
+  }) : _configuration = configuration ?? const TransferQueueConfiguration(),
+       _transport = transport is RetryingTransport
+           ? transport
+           : RetryingTransport(
+               transport ?? HttpStreamingTransport(),
+               defaultRetryPolicy:
+                   (configuration ?? const TransferQueueConfiguration())
+                       .defaultRetryPolicy,
+             ),
        _queue = TransferQueue(configuration: configuration);
 
+  final TransferQueueConfiguration _configuration;
   final TransferTransport _transport;
   final TransferQueue _queue;
 
@@ -28,6 +38,9 @@ class TransferManager {
 
   /// Underlying transfer queue managing scheduling and concurrency.
   TransferQueue get queue => _queue;
+
+  /// Active queue configuration.
+  TransferQueueConfiguration get configuration => _configuration;
 
   /// Current queue state snapshot.
   TransferQueueSnapshot get snapshot => _queue.snapshot;
@@ -60,6 +73,7 @@ class TransferManager {
             cancellationToken: token,
             priority: request.priority,
             executionMode: request.executionMode,
+            retryPolicy: request.retryPolicy,
           )
         : request;
 
@@ -92,6 +106,7 @@ class TransferManager {
             cancellationToken: token,
             priority: request.priority,
             executionMode: request.executionMode,
+            retryPolicy: request.retryPolicy,
           )
         : request;
 

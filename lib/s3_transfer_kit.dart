@@ -27,6 +27,9 @@ export 'src/queue/transfer_manager.dart';
 export 'src/queue/transfer_queue.dart';
 export 'src/queue/transfer_queue_configuration.dart';
 export 'src/queue/transfer_queue_snapshot.dart';
+export 'src/retry/retry_classifier.dart';
+export 'src/retry/retry_policy.dart';
+export 'src/retry/retrying_transport.dart';
 
 /// Primary entrypoint and facade for the S3 Transfer Kit library.
 class S3TransferKit {
