@@ -6,6 +6,8 @@ import '../models/download_request.dart';
 import '../models/download_result.dart';
 import '../models/transfer_request.dart';
 import '../models/transfer_result.dart';
+import '../multipart/multipart_upload_coordinator.dart';
+import '../multipart/multipart_upload_request.dart';
 import '../network/http_streaming_transport.dart';
 import '../network/transfer_transport.dart';
 import '../retry/retrying_transport.dart';
@@ -19,6 +21,7 @@ class TransferManager {
   TransferManager({
     TransferQueueConfiguration? configuration,
     TransferTransport? transport,
+    MultipartUploadCoordinator? multipartCoordinator,
   }) : _configuration = configuration ?? const TransferQueueConfiguration(),
        _transport = transport is RetryingTransport
            ? transport
@@ -28,10 +31,13 @@ class TransferManager {
                    (configuration ?? const TransferQueueConfiguration())
                        .defaultRetryPolicy,
              ),
+       _multipartCoordinator =
+           multipartCoordinator ?? MultipartUploadCoordinator(),
        _queue = TransferQueue(configuration: configuration);
 
   final TransferQueueConfiguration _configuration;
   final TransferTransport _transport;
+  final MultipartUploadCoordinator _multipartCoordinator;
   final TransferQueue _queue;
 
   int _taskIdCounter = 0;
@@ -83,6 +89,40 @@ class TransferManager {
       executionMode: effectiveRequest.executionMode,
       cancellationToken: token,
       runner: (onProgress, onStatusChanged) => _transport.upload(
+        effectiveRequest,
+        onProgress: onProgress,
+        onStatusChanged: onStatusChanged,
+      ),
+    );
+  }
+
+  /// Enqueues a multipart upload transfer for large files.
+  S3UploadTask enqueueMultipartUpload(S3MultipartUploadRequest request) {
+    final taskId =
+        'multipart_upload_${++_taskIdCounter}_${DateTime.now().millisecondsSinceEpoch}';
+
+    final token = request.cancellationToken ?? CancellationToken();
+    final effectiveRequest = request.cancellationToken == null
+        ? S3MultipartUploadRequest(
+            filePath: request.filePath,
+            provider: request.provider,
+            partSize: request.partSize,
+            maxConcurrentParts: request.maxConcurrentParts,
+            contentType: request.contentType,
+            customHeaders: request.customHeaders,
+            cancellationToken: token,
+            priority: request.priority,
+            executionMode: request.executionMode,
+            retryPolicy: request.retryPolicy,
+          )
+        : request;
+
+    return _queue.enqueue<S3UploadResult>(
+      id: taskId,
+      priority: effectiveRequest.priority,
+      executionMode: effectiveRequest.executionMode,
+      cancellationToken: token,
+      runner: (onProgress, onStatusChanged) => _multipartCoordinator.upload(
         effectiveRequest,
         onProgress: onProgress,
         onStatusChanged: onStatusChanged,

@@ -69,3 +69,17 @@
   4. Cooperative sleep cancellation: Cancelling during backoff timer immediately aborts without waiting for the sleep duration to elapse.
   5. Configurable both globally on `TransferQueueConfiguration` and per request on `S3UploadRequest` / `S3DownloadRequest`.
 - **Consequences:** Complete developer control over retry vs fail-fast behavior with zero code duplication and predictable error recovery.
+
+---
+
+## ADR-008: S3-Compliant Multipart Uploads and Provider Abstraction
+
+- **Status:** Accepted
+- **Context:** Uploading large files (> 5MB up to terabytes) via a single HTTP PUT request is fragile: any connection interruption loses all progress, and memory or server limits can reject massive requests. Furthermore, AWS S3 charges customers for orphaned multipart parts if aborted uploads are not explicitly cleaned up.
+- **Decision:** Implement `MultipartUploadCoordinator` adhering strictly to AWS S3 specifications:
+  1. Slices files logically with minimum part size $\ge 5\text{MB}$ (except final part).
+  2. Uploads parts concurrently using bounded parallel workers (`maxConcurrentParts`).
+  3. Decouples AWS orchestration behind `S3MultipartProvider` (with functional `fromCallbacks` factory).
+  4. Automatic cleanup: Invokes `abortMultipartUpload` upon unrecoverable failure or user cancellation, preventing orphaned S3 storage costs.
+  5. Part-level retry resilience: Transient failures in individual parts are retried independently without re-uploading previously completed parts.
+- **Consequences:** Resilient, high-throughput uploading of multi-gigabyte files with robust cloud cost protection.

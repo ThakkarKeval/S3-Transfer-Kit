@@ -4,6 +4,8 @@ import 's3_transfer_kit_platform_interface.dart';
 import 'src/api/transfer_task.dart';
 import 'src/models/download_request.dart';
 import 'src/models/transfer_request.dart';
+import 'src/multipart/multipart_upload_coordinator.dart';
+import 'src/multipart/multipart_upload_request.dart';
 import 'src/network/transfer_transport.dart';
 import 'src/queue/transfer_manager.dart';
 import 'src/queue/transfer_queue.dart';
@@ -23,6 +25,11 @@ export 'src/models/transfer_progress.dart';
 export 'src/models/transfer_request.dart';
 export 'src/models/transfer_result.dart';
 export 'src/models/transfer_status.dart';
+export 'src/multipart/multipart_upload_coordinator.dart';
+export 'src/multipart/multipart_upload_request.dart';
+export 'src/multipart/s3_multipart_provider.dart';
+export 'src/multipart/s3_part.dart';
+export 'src/multipart/s3_part_etag.dart';
 export 'src/queue/transfer_manager.dart';
 export 'src/queue/transfer_queue.dart';
 export 'src/queue/transfer_queue_configuration.dart';
@@ -35,13 +42,15 @@ export 'src/retry/retrying_transport.dart';
 class S3TransferKit {
   /// Constructs an [S3TransferKit] instance.
   ///
-  /// Optionally accepts a custom [transport] or [configuration] for testing or platform-specific execution.
+  /// Optionally accepts a custom [transport], [configuration], or [multipartCoordinator] for testing or platform-specific execution.
   S3TransferKit({
     TransferTransport? transport,
     TransferQueueConfiguration? configuration,
+    MultipartUploadCoordinator? multipartCoordinator,
   }) : _manager = TransferManager(
          transport: transport,
          configuration: configuration,
+         multipartCoordinator: multipartCoordinator,
        );
 
   final TransferManager _manager;
@@ -67,6 +76,13 @@ class S3TransferKit {
   /// Managed by the queue according to priority, execution mode, and concurrency limits.
   S3UploadTask upload(S3UploadRequest request) =>
       _manager.enqueueUpload(request);
+
+  /// Enqueues and initiates a multipart upload for large files.
+  ///
+  /// Automatically slices the file into compliant parts ($\ge 5\text{MB}$), uploads parts concurrently,
+  /// collects ETags, and finalizes with S3.
+  S3UploadTask uploadMultipart(S3MultipartUploadRequest request) =>
+      _manager.enqueueMultipartUpload(request);
 
   /// Enqueues and initiates a single-file download from an S3-compatible source.
   ///
