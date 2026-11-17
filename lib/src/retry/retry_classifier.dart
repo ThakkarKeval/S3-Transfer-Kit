@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import '../exceptions/transfer_error_code.dart';
 import '../exceptions/transfer_exception.dart';
+import 'socket_exception_checker_stub.dart'
+    if (dart.library.io) 'socket_exception_checker_io.dart';
 
 /// Evaluates whether an error encountered during transfer execution is transient and retryable.
 class RetryClassifier {
@@ -37,7 +38,7 @@ class RetryClassifier {
       }
     }
 
-    if (error is SocketException || error is TimeoutException) {
+    if (isSocketException(error) || error is TimeoutException) {
       return true;
     }
 

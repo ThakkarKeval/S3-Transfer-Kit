@@ -1,3 +1,20 @@
+## 0.1.1
+
+Maintenance release addressing platform compatibility, documentation accuracy, and web resilience:
+
+### Platform & WASM Compatibility
+- **WASM Decoupling in Retry Classifier:** Decoupled `RetryClassifier` from direct `dart:io` imports using conditional imports (`dart.library.io`), enabling clean exception classification across both IO and non-IO environments.
+- **Pure Dart Authorization Headers:** Replaced `dart:io` `HttpHeaders` references in `S3Authorization` with pure string constants to prevent secondary WASM blockers.
+- **Platform Alignment:** Verified native bounded-memory streaming (Android `HttpURLConnection` thread pool, iOS/macOS `URLSession`) and updated platform declarations to accurately target supported native platforms (Android, iOS, macOS, Windows, Linux).
+
+### Documentation
+- **Multipart Example Scoping:** Fixed `fileLength` scoping in `README.md` multipart upload quickstart.
+- **Testing Section Removal:** Removed the redundant testing section from `README.md`.
+- **Accurate Background Execution Guarantees:** Clarified native execution models (Android background worker thread pool, iOS/macOS `URLSession`) across documentation.
+
+### Example Application
+- **Web Resilience:** Added platform-adaptive guards (`kIsWeb`) in the example dashboard to prevent runtime crashes when running on WebAssembly or Web browsers, displaying informative user notices for native-only filesystem operations.
+
 ## 0.1.0
 
 Initial production-grade release of `s3_transfer_kit`, featuring:

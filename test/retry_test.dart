@@ -113,6 +113,12 @@ void main() {
       );
     });
 
+    test('handles generic runtime exceptions cleanly without dart:io dependency', () {
+      expect(RetryClassifier.isRetryable(Exception('Generic failure')), isFalse);
+      expect(RetryClassifier.isRetryable(const FormatException('Invalid format')), isFalse);
+      expect(RetryClassifier.isRetryable(TimeoutException('Request timed out')), isTrue);
+    });
+
     test('classifies non-transient errors as non-retryable', () {
       expect(
         RetryClassifier.isRetryable(

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:s3_transfer_kit/s3_transfer_kit.dart';
 
@@ -101,6 +101,19 @@ class _TransferKitDashboardScreenState
       final version = await _s3.getPlatformVersion() ?? 'Unknown';
       final bgSupported = await _s3.isBackgroundTransferSupported();
 
+      if (mounted) {
+        setState(() {
+          _platformVersion = version;
+          _backgroundSupported = bgSupported;
+        });
+      }
+
+      if (kIsWeb) {
+        _log('Running on Web (Platform version: $version)');
+        _log('Note: Local loopback server and filesystem are native-only.');
+        return;
+      }
+
       // Launch local loopback HTTP server to safely handle demo uploads/downloads
       _localServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       _localServerUrl = Uri.parse(
@@ -123,14 +136,24 @@ class _TransferKitDashboardScreenState
       });
 
       if (mounted) {
-        setState(() {
-          _platformVersion = version;
-          _backgroundSupported = bgSupported;
-        });
         _log('Initialized local demo server on $_localServerUrl');
       }
     } catch (e) {
       _log('Init error: $e');
+    }
+  }
+
+  void _showWebNotice(String action) {
+    _log('$action: Local filesystem operations are not supported in web browsers.');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$action is disabled on Web: S3 Transfer Kit streaming requires native filesystem access.',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -169,6 +192,10 @@ class _TransferKitDashboardScreenState
   }
 
   Future<void> _startSingleUpload() async {
+    if (kIsWeb) {
+      _showWebNotice('Single upload');
+      return;
+    }
     if (_localServerUrl == null) return;
     _log('Preparing 1MB sample file for upload...');
 
@@ -213,6 +240,10 @@ class _TransferKitDashboardScreenState
   }
 
   Future<void> _startSingleDownload() async {
+    if (kIsWeb) {
+      _showWebNotice('Download');
+      return;
+    }
     if (_localServerUrl == null) return;
     _log('Initiating download from local demo server...');
 
@@ -258,6 +289,10 @@ class _TransferKitDashboardScreenState
   }
 
   Future<void> _startMultipartUpload() async {
+    if (kIsWeb) {
+      _showWebNotice('Multipart upload');
+      return;
+    }
     if (_localServerUrl == null) return;
     _log('Generating 15MB file for multipart test (3 x 5MB parts)...');
 
@@ -334,6 +369,10 @@ class _TransferKitDashboardScreenState
   }
 
   Future<void> _enqueuePriorityBatch() async {
+    if (kIsWeb) {
+      _showWebNotice('Priority batch');
+      return;
+    }
     if (_localServerUrl == null) return;
     _log('Enqueuing 9 transfers across High, Normal, and Low priorities...');
 
@@ -440,6 +479,33 @@ class _TransferKitDashboardScreenState
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (kIsWeb)
+                  Card(
+                    color: theme.colorScheme.tertiaryContainer,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: theme.colorScheme.onTertiaryContainer,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Running on Web: S3 Transfer Kit is designed for bounded-memory file streaming on native platforms (Android, iOS, macOS, Windows, Linux). Local loopback servers and filesystem operations are disabled on Web.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
                 // Single Upload Card
                 Card(
                   child: Padding(

@@ -1,9 +1,10 @@
-import 'dart:io';
-
 import '../exceptions/transfer_error_code.dart';
 import '../exceptions/transfer_exception.dart';
 import 's3_credentials.dart';
 import 'sigv4_signer.dart';
+
+const _contentTypeHeader = 'content-type';
+const _contentLengthHeader = 'content-length';
 
 /// Represents an authorized HTTP request target with destination URL and required headers.
 class AuthorizedHttpRequest {
@@ -176,10 +177,10 @@ class _StaticSigV4Authorization implements S3Authorization {
   }) async {
     final headersToSign = Map<String, String>.from(customHeaders ?? {});
     if (contentType.isNotEmpty) {
-      headersToSign[HttpHeaders.contentTypeHeader] = contentType;
+      headersToSign[_contentTypeHeader] = contentType;
     }
     if (contentLength > 0) {
-      headersToSign[HttpHeaders.contentLengthHeader] = contentLength.toString();
+      headersToSign[_contentLengthHeader] = contentLength.toString();
     }
 
     final signedHeaders = _signer.sign(
@@ -251,10 +252,10 @@ class _DynamicCredentialsAuthorization implements S3Authorization {
 
     final headersToSign = Map<String, String>.from(customHeaders ?? {});
     if (contentType.isNotEmpty) {
-      headersToSign[HttpHeaders.contentTypeHeader] = contentType;
+      headersToSign[_contentTypeHeader] = contentType;
     }
     if (contentLength > 0) {
-      headersToSign[HttpHeaders.contentLengthHeader] = contentLength.toString();
+      headersToSign[_contentLengthHeader] = contentLength.toString();
     }
 
     final signedHeaders = _signer.sign(

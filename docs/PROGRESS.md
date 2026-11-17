@@ -1,8 +1,8 @@
 # Project Progress — s3_transfer_kit
 
 ## Current Status
-- **Current Phase:** Phase 10 (Release Readiness) — Completed
-- **Next Phase:** None — All 10 Phases of Master Development Plan Complete! 🎉
+- **Current Phase:** Maintenance Release 0.1.1 — Completed 🎉
+- **Next Phase:** None — All pub.dev findings addressed, tests passing, 150/150 pana score verified.
 
 ---
 
@@ -21,6 +21,17 @@
 | **Phase 8** | Credential Renewal & S3 Providers | Completed | 2026-11-17 |
 | **Phase 9** | Performance & Reliability Validation | Completed | 2026-11-17 |
 | **Phase 10** | Release Readiness | Completed | 2026-11-17 |
+
+---
+
+## Maintenance Release 0.1.1 Verification
+- [x] **Web & WASM Decoupling:** Decoupled `RetryClassifier` from unconditional `dart:io` import using conditional imports (`dart.library.io`), with `socket_exception_checker_stub.dart` and `socket_exception_checker_io.dart`. Replaced `HttpHeaders` in `S3Authorization` with pure string constants.
+- [x] **Regression Testing:** Added regression tests in `test/retry_test.dart` verifying error classification across both VM and Chrome Web environments (all 93 plugin tests passing).
+- [x] **README Scoping Fix:** Fixed out-of-scope `fileLength` in the multipart quickstart example by capturing outer scope `fileLength = await File(filePath).length()`.
+- [x] **README Testing Section Removal:** Completely removed the `## 🧪 Testing` section from `README.md`.
+- [x] **Example App Web Resilience:** Added platform-adaptive `kIsWeb` guards in `example/lib/main.dart` preventing unsupported `HttpServer` and filesystem exceptions on Web. Verified `flutter build web --wasm` builds with 0 errors and `example/test/widget_test.dart` passes on both VM and Chrome.
+- [x] **Accurate Platform Declarations:** Aligned `pubspec.yaml` and `README.md` to target supported native platforms (Android, iOS, macOS, Windows, Linux).
+- [x] **Pub & Pana Verification:** Verified with local `pana` scoring **150/150 points** (20/20 platform support points, 50/50 static analysis, 40/40 dependencies, 30/30 file conventions, 10/10 documentation). `dart pub publish --dry-run` passed cleanly with 0 errors.
 
 ---
 

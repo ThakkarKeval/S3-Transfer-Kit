@@ -4,7 +4,7 @@ A resilient, production-grade Flutter plugin for Amazon S3 and compatible object
 
 [![pub package](https://img.shields.io/pub/v/s3_transfer_kit.svg)](https://pub.dev/packages/s3_transfer_kit)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/ThakkarKeval/S3-Transfer-Kit/blob/main/LICENSE)
-[![platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20macos%20%7C%20web%20%7C%20linux%20%7C%20windows-blue.svg)](https://pub.dev/packages/s3_transfer_kit)
+[![platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20macos%20%7C%20linux%20%7C%20windows-blue.svg)](https://pub.dev/packages/s3_transfer_kit)
 
 ---
 
@@ -16,7 +16,7 @@ A resilient, production-grade Flutter plugin for Amazon S3 and compatible object
 - **Persistent Transfer Resumption:** Survives application restarts and crashes. Automatically skips already-completed parts on resume, verifies local file integrity, and cleans orphaned records.
 - **Managed Priority Queue:** Global concurrency limiter (`TransferQueueConfiguration.maxConcurrentTransfers`) with priority scheduling (`TransferPriority.high` > `normal` > `low`) and broadcast state snapshots.
 - **Resilient Retry & Backoff:** `RetryPolicy.standard` with exponential backoff and randomized full jitter to eliminate thundering herd contention. Differentiates transient network drops from permanent 4xx errors.
-- **Native Background Transfers:** Opt-in background execution on Android (Foreground Service / thread pool) and iOS/macOS (`URLSession`) via type-safe Pigeon platform channels, with automatic fallback to foreground streaming on desktop and web.
+- **Native Background Transfers:** Opt-in background execution on Android (thread pool) and iOS/macOS (`URLSession`) via type-safe Pigeon platform channels, with automatic fallback to in-process foreground streaming on desktop.
 - **Dual Authentication & Pure Dart SigV4:** Native support for both presigned URLs and AWS Cognito / STS temporary credentials with pure Dart HMAC-SHA256 SigV4 request signing (`UNSIGNED-PAYLOAD`).
 - **Turnkey S3 Provider Profiles:** Built-in profiles and URL builders for **AWS S3**, **Cloudflare R2**, **MinIO**, **Wasabi**, and **Backblaze B2**.
 
@@ -58,7 +58,7 @@ Add `s3_transfer_kit` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  s3_transfer_kit: ^0.1.0
+  s3_transfer_kit: ^0.1.1
 ```
 
 Then run:
@@ -128,6 +128,9 @@ print('Saved to: ${result.destinationPath}');
 For files larger than 10MB, use multipart uploads for maximum resilience and speed:
 
 ```dart
+const filePath = '/path/to/large_video.mp4';
+final fileLength = await File(filePath).length();
+
 final provider = S3MultipartProvider.fromCallbacks(
   onInitiate: ({required filePath, required fileLength, required contentType, customHeaders = const {}}) async {
     // Call backend API to initiate multipart upload and return uploadId
@@ -150,7 +153,7 @@ final provider = S3MultipartProvider.fromCallbacks(
 
 final task = s3.uploadMultipart(
   S3MultipartUploadRequest(
-    filePath: '/path/to/large_video.mp4',
+    filePath: filePath,
     provider: provider,
     partSize: 5 * 1024 * 1024, // 5MB parts (minimum S3 requirement)
     maxConcurrentParts: 3,     // Upload up to 3 parts simultaneously
@@ -354,18 +357,6 @@ All failures are thrown as typed `TransferException` instances containing an act
 | `cancelled` | Transfer was cancelled via `CancellationToken`. | No |
 | `invalidConfiguration` | Malformed parameters or invalid part size (< 5MB). | No |
 | `unexpectedFailure` | Unhandled runtime or system exception. | No |
-
----
-
-## 🧪 Testing
-
-The test suite covers unit, integration, memory profiling, and stress tests:
-
-```bash
-flutter test
-```
-
-All 92 tests run against mock local HTTP loopback servers without requiring live AWS credentials or active internet connections.
 
 ---
 
