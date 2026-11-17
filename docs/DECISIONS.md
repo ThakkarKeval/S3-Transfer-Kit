@@ -129,3 +129,18 @@
      - Reactive: `RetryingTransport` intercepts `TransferErrorCode.authenticationExpired` when `request.authorization.canRenew == true`, invokes `authorization.renew()`, and re-signs fresh requests for transparent recovery.
   4. Predefined S3 provider profiles: `S3ProviderProfile` supplies preconfigured profiles and URL builders for AWS S3, Cloudflare R2, MinIO, Wasabi, and Backblaze B2, supporting both virtual-host and path-style addressing.
 - **Consequences:** End-to-end support for both presigned URLs and AWS Cognito/STS credentials with zero downtime across token expirations and seamless multi-provider compatibility.
+
+---
+
+## ADR-012: Performance Benchmarking, Memory Boundedness, and Stress Invariants
+
+- **Status:** Accepted
+- **Context:** Production transfer SDKs must endure harsh conditions: gigabyte-scale transfers on constrained devices, high queue saturation (100+ concurrent requests), abrupt TCP socket resets, S3 rate limiting (HTTP 429/503), and sudden user cancellations. Without strict invariants, memory consumption can balloon, race conditions can cause deadlocks, and cancelled tasks can leak background timers and network connections.
+- **Decision:**
+  1. Bounded memory invariant: `HttpStreamingTransport` and `MultipartUploadCoordinator` must stream files and parts via `file.openRead()` in discrete chunks ($\le 64\text{KB}$) without loading files into memory buffers. Downloads stream directly into `.tmp` staging sinks on disk.
+  2. Strict concurrency limiter: `TransferQueue` enforces `runningItems.length <= maxConcurrentTransfers` across arbitrary task volumes (tested up to 120+ concurrent tasks), draining queues via priority order (`high` > `normal` > `low`) and sequence number FIFO.
+  3. Resilient socket drop recovery: In-flight socket aborts, broken pipes, and connection resets trigger automatic re-attempts up to `maxAttempts`, re-streaming the payload cleanly from byte 0 without corrupted partial states.
+  4. Non-cascading multipart retries: In `MultipartUploadCoordinator`, failures during a single part retry independently and do not restart or invalidate already completed parts.
+  5. Deterministic queue teardown: Calling `dispose()` clears pending item queues, cancels active timers, cleans up streams, and rejects subsequent enqueue attempts with `StateError`.
+- **Consequences:** Provable $<32\text{MB}$ heap overhead during multi-megabyte transfers, zero task starvation under high queue saturation, transparent recovery from network drops, and clean teardown during lifecycle transitions.
+

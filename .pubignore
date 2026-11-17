@@ -1,0 +1,6 @@
+build/
+docs/
+doc/api/
+pigeons/
+.idea/
+*.iml

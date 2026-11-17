@@ -349,6 +349,9 @@ class TransferQueue {
   /// Disposes the queue and cleans up internal streams.
   Future<void> dispose() async {
     _isDisposed = true;
+    _queuedItems.clear();
+    _runningItems.clear();
+    _allTasks.clear();
     _snapshotController.close();
   }
 }

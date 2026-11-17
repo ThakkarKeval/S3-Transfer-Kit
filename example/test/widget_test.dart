@@ -1,27 +1,16 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:s3_transfer_kit_example/main.dart';
 
 void main() {
-  testWidgets('Verify Platform version', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Verify S3TransferKitExampleApp renders dashboard', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const S3TransferKitExampleApp());
+    await tester.pump();
 
-    // Verify that platform version is retrieved.
-    expect(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is Text && widget.data!.startsWith('Running on:'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('S3 Transfer Kit'), findsOneWidget);
+    expect(find.text('Single-File Upload (1MB)'), findsOneWidget);
+    expect(find.text('S3 Multipart Upload (15MB)'), findsOneWidget);
+    expect(find.text('Two-Phase Atomic Download'), findsOneWidget);
   });
 }
