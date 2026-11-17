@@ -1,9 +1,7 @@
 package com.cavernlabs.s3.transfer.kit.s3_transfer_kit
 
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import org.mockito.Mockito
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /*
  * This demonstrates a simple unit test of the Kotlin portion of this plugin's implementation.
@@ -15,13 +13,9 @@ import kotlin.test.Test
 
 internal class S3TransferKitPluginTest {
     @Test
-    fun onMethodCall_getPlatformVersion_returnsExpectedValue() {
+    fun getPlatformVersion_returnsExpectedValue() {
         val plugin = S3TransferKitPlugin()
-
-        val call = MethodCall("getPlatformVersion", null)
-        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
-        plugin.onMethodCall(call, mockResult)
-
-        Mockito.verify(mockResult).success("Android ${android.os.Build.VERSION.RELEASE}")
+        val version = plugin.getPlatformVersion()
+        assertEquals("Android ${android.os.Build.VERSION.RELEASE}", version)
     }
 }

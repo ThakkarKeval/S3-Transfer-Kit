@@ -1,23 +1,26 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:s3_transfer_kit/s3_transfer_kit_method_channel.dart';
+import 'package:s3_transfer_kit/src/messages.g.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final platform = MethodChannelS3TransferKit();
-  const channel = MethodChannel('s3_transfer_kit');
+  const channelName =
+      'dev.flutter.pigeon.s3_transfer_kit.S3TransferKitHostApi.getPlatformVersion';
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-          return '42';
+        .setMockMessageHandler(channelName, (message) async {
+          return S3TransferKitHostApi.pigeonChannelCodec.encodeMessage(
+            <Object?>['42'],
+          );
         });
   });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+        .setMockMessageHandler(channelName, null);
   });
 
   test('getPlatformVersion', () async {

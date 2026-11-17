@@ -13,3 +13,14 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+## Pigeon Platform Channels
+
+This plugin uses [Pigeon](https://pub.dev/packages/pigeon) for type-safe platform channel communication.
+
+The communication interface is defined in `pigeons/messages.dart`. To regenerate platform channel code across Dart, Android (Kotlin), iOS (Swift), and macOS (Swift), run:
+
+```bash
+dart run pigeon --input pigeons/messages.dart
+```
+
+

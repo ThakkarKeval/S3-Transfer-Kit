@@ -1,19 +1,18 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import 's3_transfer_kit_platform_interface.dart';
+import 'src/messages.g.dart';
 
-/// An implementation of [S3TransferKitPlatform] that uses method channels.
+/// An implementation of [S3TransferKitPlatform] that uses Pigeon.
 class MethodChannelS3TransferKit extends S3TransferKitPlatform {
-  /// The method channel used to interact with the native platform.
-  @visibleForTesting
-  final methodChannel = const MethodChannel('s3_transfer_kit');
+  /// Constructs a [MethodChannelS3TransferKit].
+  MethodChannelS3TransferKit({@visibleForTesting S3TransferKitHostApi? hostApi})
+    : _hostApi = hostApi ?? S3TransferKitHostApi();
+
+  final S3TransferKitHostApi _hostApi;
 
   @override
-  Future<String?> getPlatformVersion() async {
-    final version = await methodChannel.invokeMethod<String>(
-      'getPlatformVersion',
-    );
-    return version;
+  Future<String?> getPlatformVersion() {
+    return _hostApi.getPlatformVersion();
   }
 }
