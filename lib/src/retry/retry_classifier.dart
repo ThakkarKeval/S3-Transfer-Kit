@@ -14,6 +14,7 @@ class RetryClassifier {
       switch (error.code) {
         case TransferErrorCode.cancelled:
         case TransferErrorCode.fileNotFound:
+        case TransferErrorCode.fileValidationFailed:
         case TransferErrorCode.fileAccessDenied:
         case TransferErrorCode.invalidConfiguration:
         case TransferErrorCode.authenticationExpired:

@@ -1,12 +1,16 @@
 import 'dart:async';
 
 import 's3_transfer_kit_platform_interface.dart';
+import 'src/api/cancellation_token.dart';
 import 'src/api/transfer_task.dart';
 import 'src/models/download_request.dart';
 import 'src/models/transfer_request.dart';
 import 'src/multipart/multipart_upload_coordinator.dart';
 import 'src/multipart/multipart_upload_request.dart';
+import 'src/multipart/s3_multipart_provider.dart';
 import 'src/network/transfer_transport.dart';
+import 'src/persistence/persistent_transfer_record.dart';
+import 'src/persistence/transfer_store.dart';
 import 'src/queue/transfer_manager.dart';
 import 'src/queue/transfer_queue.dart';
 import 'src/queue/transfer_queue_configuration.dart';
@@ -30,6 +34,12 @@ export 'src/multipart/multipart_upload_request.dart';
 export 'src/multipart/s3_multipart_provider.dart';
 export 'src/multipart/s3_part.dart';
 export 'src/multipart/s3_part_etag.dart';
+export 'src/network/transfer_transport.dart';
+export 'src/persistence/file_transfer_store.dart';
+export 'src/persistence/in_memory_transfer_store.dart';
+export 'src/persistence/persistent_transfer_record.dart';
+export 'src/persistence/transfer_store.dart';
+export 'src/persistence/transfer_type.dart';
 export 'src/queue/transfer_manager.dart';
 export 'src/queue/transfer_queue.dart';
 export 'src/queue/transfer_queue_configuration.dart';
@@ -42,15 +52,17 @@ export 'src/retry/retrying_transport.dart';
 class S3TransferKit {
   /// Constructs an [S3TransferKit] instance.
   ///
-  /// Optionally accepts a custom [transport], [configuration], or [multipartCoordinator] for testing or platform-specific execution.
+  /// Optionally accepts a custom [transport], [configuration], [multipartCoordinator], or [transferStore] for testing or platform-specific execution.
   S3TransferKit({
     TransferTransport? transport,
     TransferQueueConfiguration? configuration,
     MultipartUploadCoordinator? multipartCoordinator,
+    TransferStore? transferStore,
   }) : _manager = TransferManager(
          transport: transport,
          configuration: configuration,
          multipartCoordinator: multipartCoordinator,
+         transferStore: transferStore,
        );
 
   final TransferManager _manager;
@@ -60,6 +72,9 @@ class S3TransferKit {
 
   /// Underlying transfer queue.
   TransferQueue get queue => _manager.queue;
+
+  /// Optional transfer persistence store.
+  TransferStore? get transferStore => _manager.transferStore;
 
   /// Current queue state snapshot.
   TransferQueueSnapshot get snapshot => _manager.snapshot;
@@ -89,6 +104,30 @@ class S3TransferKit {
   /// Managed by the queue according to priority, execution mode, and concurrency limits.
   S3DownloadTask download(S3DownloadRequest request) =>
       _manager.enqueueDownload(request);
+
+  /// Retrieves all transfer records currently stored that are pending or active.
+  Future<List<PersistentTransferRecord>> getPendingTransfers() =>
+      _manager.getPendingTransfers();
+
+  /// Resumes an interrupted multipart upload using its persistent record.
+  Future<S3UploadTask> resumeMultipartUpload({
+    required String taskId,
+    required S3MultipartProvider provider,
+    int? maxConcurrentParts,
+    CancellationToken? cancellationToken,
+  }) => _manager.resumeMultipartUpload(
+    taskId: taskId,
+    provider: provider,
+    maxConcurrentParts: maxConcurrentParts,
+    cancellationToken: cancellationToken,
+  );
+
+  /// Cleans up old orphaned transfer records, optionally aborting in-flight multipart uploads on S3.
+  Future<int> cleanOrphanedTransfers({
+    Duration olderThan = const Duration(days: 1),
+    S3MultipartProvider? provider,
+  }) =>
+      _manager.cleanOrphanedTransfers(olderThan: olderThan, provider: provider);
 
   /// Pauses scheduling of new tasks across the entire queue.
   void pauseAll() => _manager.pauseAll();

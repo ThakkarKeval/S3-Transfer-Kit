@@ -8,6 +8,9 @@ import '../exceptions/transfer_exception.dart';
 import '../models/transfer_progress.dart';
 import '../models/transfer_result.dart';
 import '../models/transfer_status.dart';
+import '../persistence/persistent_transfer_record.dart';
+import '../persistence/transfer_store.dart';
+import '../persistence/transfer_type.dart';
 import '../retry/retry_classifier.dart';
 import '../retry/retry_policy.dart';
 import '../utils/file_validator.dart';
@@ -19,16 +22,21 @@ import 's3_part_etag.dart';
 /// Coordinates slicing, parallel chunk uploading, progress tracking, and finalization for multipart uploads.
 class MultipartUploadCoordinator {
   /// Constructs a [MultipartUploadCoordinator].
-  MultipartUploadCoordinator({this.httpClient});
+  MultipartUploadCoordinator({this.httpClient, this.store});
 
   /// Custom [HttpClient] or null to create one per transfer.
   final HttpClient? httpClient;
 
-  /// Executes the multipart upload for the given [request].
+  /// Optional persistence store for tracking multipart upload recovery state.
+  final TransferStore? store;
+
+  /// Executes or resumes a multipart upload for the given [request].
   Future<S3UploadResult> upload(
     S3MultipartUploadRequest request, {
     required void Function(TransferProgress) onProgress,
     required void Function(TransferStatus) onStatusChanged,
+    String? taskId,
+    PersistentTransferRecord? resumeRecord,
   }) async {
     final token = request.cancellationToken;
     if (token != null && token.isCancelled) {
@@ -39,10 +47,17 @@ class MultipartUploadCoordinator {
     final file = File(request.filePath);
     final fileLength = await FileValidator.validateUploadFile(file);
 
-    onProgress(TransferProgress.initial(totalBytes: fileLength));
+    if (resumeRecord != null && resumeRecord.fileLength != fileLength) {
+      onStatusChanged(TransferStatus.failed);
+      throw TransferException(
+        code: TransferErrorCode.fileValidationFailed,
+        message:
+            'Cannot resume multipart upload: local file size changed from ${resumeRecord.fileLength} to $fileLength bytes.',
+      );
+    }
 
-    // Calculate part slices
-    final parts = _calculateParts(fileLength, request.partSize);
+    final effectivePartSize = resumeRecord?.partSize ?? request.partSize;
+    final parts = _calculateParts(fileLength, effectivePartSize);
 
     if (token != null && token.isCancelled) {
       onStatusChanged(TransferStatus.cancelled);
@@ -51,35 +66,89 @@ class MultipartUploadCoordinator {
 
     onStatusChanged(TransferStatus.inProgress);
 
-    // Initiate multipart upload
     String? uploadId;
-    try {
-      uploadId = await request.provider.initiateMultipartUpload(
-        filePath: request.filePath,
-        fileLength: fileLength,
-        contentType: request.contentType,
-        customHeaders: request.customHeaders,
+    final partETags = <S3PartETag>[];
+    final partProgress = <int, int>{};
+    final completedPartNumbers = <int>{};
+
+    PersistentTransferRecord? currentRecord = resumeRecord;
+
+    if (resumeRecord != null && resumeRecord.uploadId != null) {
+      uploadId = resumeRecord.uploadId;
+      partETags.addAll(resumeRecord.completedParts);
+      for (final p in resumeRecord.completedParts) {
+        completedPartNumbers.add(p.partNumber);
+      }
+
+      for (final part in parts) {
+        if (completedPartNumbers.contains(part.partNumber)) {
+          partProgress[part.partNumber] = part.length;
+        }
+      }
+
+      final initialBytes = partProgress.values.fold(0, (a, b) => a + b);
+      onProgress(
+        TransferProgress(
+          bytesTransferred: initialBytes,
+          totalBytes: fileLength,
+        ),
       );
-    } catch (e, st) {
-      onStatusChanged(TransferStatus.failed);
-      if (e is TransferException) rethrow;
-      throw TransferException(
-        code: TransferErrorCode.unexpectedFailure,
-        message: 'Failed to initiate multipart upload: $e',
-        cause: e,
-        stackTrace: st,
-      );
+    } else {
+      onProgress(TransferProgress.initial(totalBytes: fileLength));
+
+      try {
+        uploadId = await request.provider.initiateMultipartUpload(
+          filePath: request.filePath,
+          fileLength: fileLength,
+          contentType: request.contentType,
+          customHeaders: request.customHeaders,
+        );
+      } catch (e, st) {
+        onStatusChanged(TransferStatus.failed);
+        if (e is TransferException) rethrow;
+        throw TransferException(
+          code: TransferErrorCode.unexpectedFailure,
+          message: 'Failed to initiate multipart upload: $e',
+          cause: e,
+          stackTrace: st,
+        );
+      }
+
+      if (store != null && taskId != null) {
+        final now = DateTime.now();
+        currentRecord = PersistentTransferRecord(
+          id: taskId,
+          type: TransferType.multipartUpload,
+          status: TransferStatus.inProgress,
+          filePath: request.filePath,
+          fileLength: fileLength,
+          createdAt: now,
+          updatedAt: now,
+          contentType: request.contentType,
+          uploadId: uploadId,
+          partSize: effectivePartSize,
+          completedParts: const [],
+        );
+        await store!.save(currentRecord);
+      }
     }
 
     if (token != null && token.isCancelled) {
       await _safeAbort(request, uploadId);
+      final rec = currentRecord;
+      if (store != null && taskId != null && rec != null) {
+        await store!.save(
+          rec.copyWith(
+            status: TransferStatus.cancelled,
+            updatedAt: DateTime.now(),
+          ),
+        );
+      }
       onStatusChanged(TransferStatus.cancelled);
       throw TransferException.cancelled(reason: token.reason);
     }
 
     final client = httpClient ?? HttpClient();
-    final partETags = <S3PartETag>[];
-    final partProgress = <int, int>{};
     final activeRequests = <HttpClientRequest>[];
 
     void cancelCallback() {
@@ -92,47 +161,67 @@ class MultipartUploadCoordinator {
 
     token?.onCancelled(cancelCallback);
 
+    final pendingParts = parts
+        .where((p) => !completedPartNumbers.contains(p.partNumber))
+        .toList();
+
     int nextPartIndex = 0;
-    final workerCount = min(request.maxConcurrentParts, parts.length);
+    final workerCount = min(
+      request.maxConcurrentParts,
+      max(1, pendingParts.length),
+    );
 
     try {
-      Future<void> runWorker() async {
-        while (true) {
-          if (token != null && token.isCancelled) {
-            throw TransferException.cancelled(reason: token.reason);
-          }
+      if (pendingParts.isNotEmpty) {
+        Future<void> runWorker() async {
+          while (true) {
+            if (token != null && token.isCancelled) {
+              throw TransferException.cancelled(reason: token.reason);
+            }
 
-          int currentIndex;
-          if (nextPartIndex >= parts.length) {
-            break;
-          }
-          currentIndex = nextPartIndex++;
-          final part = parts[currentIndex];
+            int currentIndex;
+            if (nextPartIndex >= pendingParts.length) {
+              break;
+            }
+            currentIndex = nextPartIndex++;
+            final part = pendingParts[currentIndex];
 
-          final partETag = await _uploadSinglePartWithRetry(
-            request: request,
-            uploadId: uploadId!,
-            part: part,
-            file: file,
-            client: client,
-            activeRequests: activeRequests,
-            onBytesTransferred: (partBytes) {
-              partProgress[part.partNumber] = partBytes;
-              final totalBytes = partProgress.values.fold(0, (a, b) => a + b);
-              onProgress(
-                TransferProgress(
-                  bytesTransferred: totalBytes,
-                  totalBytes: fileLength,
-                ),
+            final partETag = await _uploadSinglePartWithRetry(
+              request: request,
+              uploadId: uploadId!,
+              part: part,
+              file: file,
+              client: client,
+              activeRequests: activeRequests,
+              onBytesTransferred: (partBytes) {
+                partProgress[part.partNumber] = partBytes;
+                final totalBytes = partProgress.values.fold(0, (a, b) => a + b);
+                onProgress(
+                  TransferProgress(
+                    bytesTransferred: totalBytes,
+                    totalBytes: fileLength,
+                  ),
+                );
+              },
+            );
+
+            partETags.add(partETag);
+
+            final rec = currentRecord;
+            if (store != null && taskId != null && rec != null) {
+              final updated = rec.copyWith(
+                status: TransferStatus.inProgress,
+                updatedAt: DateTime.now(),
+                completedParts: List.of(partETags),
               );
-            },
-          );
-
-          partETags.add(partETag);
+              currentRecord = updated;
+              await store!.save(updated);
+            }
+          }
         }
-      }
 
-      await Future.wait(List.generate(workerCount, (_) => runWorker()));
+        await Future.wait(List.generate(workerCount, (_) => runWorker()));
+      }
 
       if (token != null && token.isCancelled) {
         throw TransferException.cancelled(reason: token.reason);
@@ -143,18 +232,49 @@ class MultipartUploadCoordinator {
 
       // Complete multipart upload
       final result = await request.provider.completeMultipartUpload(
-        uploadId: uploadId,
+        uploadId: uploadId!,
         parts: partETags,
       );
+
+      final rec = currentRecord;
+      if (store != null && taskId != null && rec != null) {
+        final completedRecord = rec.copyWith(
+          status: TransferStatus.completed,
+          updatedAt: DateTime.now(),
+          completedParts: List.of(partETags),
+        );
+        currentRecord = completedRecord;
+        await store!.save(completedRecord);
+      }
 
       onStatusChanged(TransferStatus.completed);
       return result;
     } catch (e, st) {
-      await _safeAbort(request, uploadId);
-
+      final rec = currentRecord;
       if (token != null && token.isCancelled) {
+        await _safeAbort(request, uploadId);
+        if (store != null && taskId != null && rec != null) {
+          await store!.save(
+            rec.copyWith(
+              status: TransferStatus.cancelled,
+              updatedAt: DateTime.now(),
+            ),
+          );
+        }
         onStatusChanged(TransferStatus.cancelled);
         throw TransferException.cancelled(reason: token.reason, cause: e);
+      }
+
+      if (store == null) {
+        await _safeAbort(request, uploadId);
+      } else if (taskId != null && rec != null) {
+        await store!.save(
+          rec.copyWith(
+            status: TransferStatus.failed,
+            updatedAt: DateTime.now(),
+            completedParts: List.of(partETags),
+          ),
+        );
       }
 
       onStatusChanged(TransferStatus.failed);

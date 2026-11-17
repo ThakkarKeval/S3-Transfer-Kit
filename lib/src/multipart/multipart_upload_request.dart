@@ -11,7 +11,7 @@ class S3MultipartUploadRequest {
     required this.filePath,
     required this.provider,
     this.partSize = defaultPartSize,
-    this.maxConcurrentParts = 4,
+    this.maxConcurrentParts = defaultMaxConcurrentParts,
     this.contentType = 'application/octet-stream',
     this.customHeaders = const <String, String>{},
     this.cancellationToken,
@@ -32,6 +32,9 @@ class S3MultipartUploadRequest {
 
   /// Default part size for multipart transfers (5 MB).
   static const int defaultPartSize = 5 * 1024 * 1024;
+
+  /// Default maximum concurrent parts uploaded in parallel.
+  static const int defaultMaxConcurrentParts = 4;
 
   /// Absolute local path of the file to upload.
   final String filePath;

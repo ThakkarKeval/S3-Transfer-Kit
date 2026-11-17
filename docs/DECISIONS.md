@@ -83,3 +83,18 @@
   4. Automatic cleanup: Invokes `abortMultipartUpload` upon unrecoverable failure or user cancellation, preventing orphaned S3 storage costs.
   5. Part-level retry resilience: Transient failures in individual parts are retried independently without re-uploading previously completed parts.
 - **Consequences:** Resilient, high-throughput uploading of multi-gigabyte files with robust cloud cost protection.
+
+---
+
+## ADR-009: Persistent Transfer Recovery Architecture
+
+- **Status:** Accepted
+- **Context:** Mobile and desktop applications are frequently killed by the OS, backgrounded, or encounter abrupt power loss during multi-gigabyte transfers. Re-uploading gigabytes of data from part 1 wastes bandwidth, increases user wait times, and incurs duplicate cloud egress/PUT costs. Third-party database packages (e.g. SQLite, Hive, Isar) introduce heavy native dependencies, build complexity, and potential schema migration fragility.
+- **Decision:**
+  1. Lightweight, dependency-free storage abstraction via `TransferStore` interface with `PersistentTransferRecord`.
+  2. Implement `FileTransferStore` leveraging atomic write-and-rename operations (`<id>.json.tmp` -> `<id>.json`) in an isolated directory to prevent JSON corruption during abrupt crashes.
+  3. Provide `InMemoryTransferStore` for fast, hermetic unit testing and ephemeral sessions.
+  4. State integrity verification: Before resuming, validate that the local file still exists, is readable, and its size matches `record.fileLength`. If size changed, fail fast with `TransferErrorCode.fileValidationFailed`.
+  5. S3 Multipart resumption: Skip already-completed parts recorded in `completedParts`, initialize byte progress to the sum of finished parts, upload only pending slices, and assemble all sorted ETags upon completion.
+  6. Orphaned transfer cleanup: Provide `cleanOrphanedTransfers` on `TransferManager` to prune records older than a configurable threshold and invoke `abortMultipartUpload` on S3 to prevent lingering cloud storage charges.
+- **Consequences:** Zero third-party database dependencies, instant recovery across process termination, robust cloud cost protection, and smooth progress tracking on resumed transfers.

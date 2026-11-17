@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:s3_transfer_kit/s3_transfer_kit.dart';
-import 'package:s3_transfer_kit/src/network/transfer_transport.dart';
 
 class _MockFlakyTransport implements TransferTransport {
   int uploadCallCount = 0;

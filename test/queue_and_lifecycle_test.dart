@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:s3_transfer_kit/s3_transfer_kit.dart';
-import 'package:s3_transfer_kit/src/network/transfer_transport.dart';
 
 class _FakeCompleterTransport implements TransferTransport {
   final Map<String, Completer<S3UploadResult>> uploadCompleters = {};

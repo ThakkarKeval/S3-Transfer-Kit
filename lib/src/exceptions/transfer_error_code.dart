@@ -6,6 +6,9 @@ enum TransferErrorCode {
   /// The target local file does not exist.
   fileNotFound,
 
+  /// The local file failed validation checks (e.g. empty file, size mismatch on resume).
+  fileValidationFailed,
+
   /// The local file or destination cannot be accessed due to permissions or file lock.
   fileAccessDenied,
 
