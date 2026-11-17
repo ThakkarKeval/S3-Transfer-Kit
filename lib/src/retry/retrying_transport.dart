@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../api/cancellation_token.dart';
+import '../exceptions/transfer_error_code.dart';
 import '../exceptions/transfer_exception.dart';
 import '../models/download_request.dart';
 import '../models/download_result.dart';
@@ -58,9 +59,22 @@ class RetryingTransport implements TransferTransport {
           rethrow;
         }
 
-        final isRetryable = RetryClassifier.isRetryable(error);
+        final isAuthExpired =
+            error is TransferException &&
+            error.code == TransferErrorCode.authenticationExpired &&
+            request.authorization.canRenew;
+
+        final isRetryable = isAuthExpired || RetryClassifier.isRetryable(error);
         if (!isRetryable || attempt >= policy.maxAttempts) {
           rethrow;
+        }
+
+        if (isAuthExpired) {
+          try {
+            await request.authorization.renew();
+          } catch (_) {
+            rethrow;
+          }
         }
 
         final delay = policy.calculateDelay(attempt);
@@ -103,9 +117,22 @@ class RetryingTransport implements TransferTransport {
           rethrow;
         }
 
-        final isRetryable = RetryClassifier.isRetryable(error);
+        final isAuthExpired =
+            error is TransferException &&
+            error.code == TransferErrorCode.authenticationExpired &&
+            request.authorization.canRenew;
+
+        final isRetryable = isAuthExpired || RetryClassifier.isRetryable(error);
         if (!isRetryable || attempt >= policy.maxAttempts) {
           rethrow;
+        }
+
+        if (isAuthExpired) {
+          try {
+            await request.authorization.renew();
+          } catch (_) {
+            rethrow;
+          }
         }
 
         final delay = policy.calculateDelay(attempt);

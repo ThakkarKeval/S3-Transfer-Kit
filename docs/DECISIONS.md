@@ -114,3 +114,18 @@
   4. Graceful fallback: If background execution is unsupported on the host platform (e.g. Web or unsupported platforms), `NativeBackgroundTransport` automatically falls back to in-process foreground transport.
   5. Cooperative cancellation: Cancelling via `CancellationToken` in Dart invokes `cancelBackgroundTransfer` on the host platform, terminating native network connections immediately.
 - **Consequences:** Seamless transfers surviving app backgrounding on supported native platforms while giving developers complete control to keep transfers foreground-only with zero unnecessary overhead.
+
+---
+
+## ADR-011: Credential Renewal, SigV4 Signing, and Multi-Provider Storage Profiles
+
+- **Status:** Accepted
+- **Context:** Cloud transfers require diverse authorization mechanisms. Some applications use backend-issued presigned URLs, while others authenticate directly via AWS Cognito Identity Pools, AWS STS, or static IAM credentials. Temporary credentials and presigned URLs expire, causing transfers to abort mid-stream with `ExpiredToken` / `403 Forbidden` unless transparently renewed. Furthermore, developers need turnkey support for S3-compatible providers (Cloudflare R2, MinIO, Wasabi, Backblaze B2) without manually assembling bespoke endpoints, regions, and path styles.
+- **Decision:**
+  1. Universal `S3Authorization` hierarchy: Supports static presigned URLs (`S3Authorization.presignedUrl`), dynamic URL providers (`S3Authorization.presignedProvider`), static IAM SigV4 (`S3Authorization.sigV4`), and temporary STS/Cognito credentials (`S3Authorization.cognito`).
+  2. Pure Dart AWS SigV4 implementation via `SigV4Signer`: Implements canonical request hashing, credential scoping, and HMAC-SHA256 signature calculation using `UNSIGNED-PAYLOAD` streaming, avoiding buffering large files in RAM.
+  3. Preemptive & reactive credential renewal:
+     - Preemptive: Automatically checks credential `expiration` with a configurable buffer window (e.g. 5 minutes) before signing requests.
+     - Reactive: `RetryingTransport` intercepts `TransferErrorCode.authenticationExpired` when `request.authorization.canRenew == true`, invokes `authorization.renew()`, and re-signs fresh requests for transparent recovery.
+  4. Predefined S3 provider profiles: `S3ProviderProfile` supplies preconfigured profiles and URL builders for AWS S3, Cloudflare R2, MinIO, Wasabi, and Backblaze B2, supporting both virtual-host and path-style addressing.
+- **Consequences:** End-to-end support for both presigned URLs and AWS Cognito/STS credentials with zero downtime across token expirations and seamless multi-provider compatibility.

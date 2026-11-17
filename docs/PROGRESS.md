@@ -1,8 +1,8 @@
 # Project Progress — s3_transfer_kit
 
 ## Current Status
-- **Current Phase:** Phase 7 (Native Background Transfers) — Completed
-- **Next Phase:** Phase 8 (Credential Renewal & S3 Providers) — Awaiting Approval
+- **Current Phase:** Phase 8 (Credential Renewal & S3 Providers) — Completed
+- **Next Phase:** Phase 9 (Performance & Reliability Validation) — Awaiting Approval
 
 ---
 
@@ -18,9 +18,20 @@
 | **Phase 5** | Multipart Upload Support | Completed | 2026-11-17 |
 | **Phase 6** | Persistent Transfer Recovery | Completed | 2026-11-17 |
 | **Phase 7** | Native Background Transfers | Completed | 2026-11-17 |
-| **Phase 8** | Credential Renewal & S3 Providers | Planned | - |
+| **Phase 8** | Credential Renewal & S3 Providers | Completed | 2026-11-17 |
 | **Phase 9** | Performance & Reliability Validation | Planned | - |
 | **Phase 10** | Release Readiness | Planned | - |
+
+---
+
+## Phase 8 Verification
+- [x] Dual-authentication support: seamless support for both presigned URLs (`S3Authorization.presignedUrl`, `S3Authorization.presignedProvider`) and AWS Cognito/STS credentials (`S3Authorization.cognito`, `S3Authorization.sigV4`).
+- [x] Pure Dart AWS SigV4 implementation: `SigV4Signer` calculates canonical request hashes, credential scopes, and HMAC-SHA256 signatures with `UNSIGNED-PAYLOAD` streaming.
+- [x] Preemptive credential renewal: `S3Credentials` and `_DynamicCredentialsAuthorization` track expiration with configurable buffers (e.g. 5 minutes) to renew before tokens expire.
+- [x] Reactive credential renewal in `RetryingTransport`: transparently intercepts `TransferErrorCode.authenticationExpired` when `canRenew == true`, invokes `authorization.renew()`, and resumes execution with fresh credentials.
+- [x] Turnkey multi-provider profiles: `S3ProviderProfile` preconfigures endpoints, regions, path styles, and URL builders for AWS S3, Cloudflare R2, MinIO, Wasabi, and Backblaze B2.
+- [x] Comprehensive test suite with 13 dedicated credential, SigV4, renewal, and provider profile tests (84 total plugin tests).
+- [x] Static analysis and formatting pass with 0 issues.
 
 ---
 
